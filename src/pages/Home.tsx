@@ -9,6 +9,7 @@ import CaughtModal from "@/components/CaughtModal";
 import AngryModal from "@/components/AngryModal";
 import MealAlert from "@/components/MealAlert";
 import IncomingCallModal from "@/components/modals/IncomingCallModal";
+import CallModal from "@/components/modals/CallModal";
 import LoadingScreen from "@/components/LoadingScreen";
 import { Eye } from "lucide-react";
 import type { CardModule } from "@/types/card";
@@ -218,6 +219,7 @@ export default function Home() {
       <AngryModal />
       <MealAlert />
       <IncomingCallModal />
+      <CallModal />
     </div>
   );
 }

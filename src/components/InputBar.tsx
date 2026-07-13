@@ -16,7 +16,7 @@ export default function InputBar() {
   const isGroup = activeConv?.type === "group";
 
   const onSend = () => {
-    if (!text.trim() || isFlipping || !activeConv) return;
+    if (!text.trim() || !activeConv) return;
     send(activeConv.id, text);
     setText("");
   };
@@ -29,16 +29,14 @@ export default function InputBar() {
   };
 
   const onPickSticker = (image: string) => {
-    if (isFlipping || !activeConv) return;
+    if (!activeConv) return;
     sendStickerInConv(activeConv.id, image, "me");
     setShowStickers(false);
   };
 
-  const placeholder = isFlipping
-    ? "他正在翻卡，稍等……"
-    : isGroup
-      ? "说点什么吧"
-      : "说点什么吧（Enter 发送）";
+  const placeholder = isGroup
+    ? "说点什么吧"
+    : "说点什么吧（Enter 发送）";
 
   return (
     <div

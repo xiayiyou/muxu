@@ -4,7 +4,6 @@ import { useAppStore } from "@/store/app";
 import ConvSwitchModal from "@/components/modals/ConvSwitchModal";
 import RPSModal from "@/components/modals/RPSModal";
 import PollModal from "@/components/modals/PollModal";
-import CallModal from "@/components/modals/CallModal";
 import MemoModal from "@/components/modals/MemoModal";
 import MailboxModal from "@/components/modals/MailboxModal";
 
@@ -17,11 +16,11 @@ export default function ChatHeader() {
   const phoneOpen = useAppStore((s) => s.phoneOpen);
   const setSettingsOpen = useAppStore((s) => s.setSettingsOpen);
   const openMailbox = useAppStore((s) => s.openMailbox);
+  const startCall = useAppStore((s) => s.startCall);
 
   const [showConvModal, setShowConvModal] = useState(false);
   const [showRPSModal, setShowRPSModal] = useState(false);
   const [showPollModal, setShowPollModal] = useState(false);
-  const [showCallModal, setShowCallModal] = useState(false);
   const [showMemoModal, setShowMemoModal] = useState(false);
   const [showMailboxModal, setShowMailboxModal] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
@@ -104,7 +103,7 @@ export default function ChatHeader() {
           {!isGroup && contact && (
             <>
               <button
-                onClick={() => setShowCallModal(true)}
+                onClick={() => contact && startCall(contact.id)}
                 className="flex h-10 w-10 items-center justify-center rounded-full border transition hover:scale-105"
                 style={{
                   borderColor: "var(--card-border)",
@@ -208,15 +207,6 @@ export default function ChatHeader() {
       <ConvSwitchModal isOpen={showConvModal} onClose={() => setShowConvModal(false)} />
       <RPSModal isOpen={showRPSModal} onClose={() => setShowRPSModal(false)} />
       <PollModal isOpen={showPollModal} onClose={() => setShowPollModal(false)} />
-      {contact && (
-        <CallModal
-          isOpen={showCallModal}
-          onClose={() => setShowCallModal(false)}
-          contactId={contact.id}
-          contactName={contact.name}
-          contactAvatar={contact.avatar}
-        />
-      )}
       {contactId && (
         <MemoModal
           isOpen={showMemoModal}

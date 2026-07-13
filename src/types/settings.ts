@@ -1,8 +1,8 @@
 // 美化设置
 export interface BeautySettings {
   themeId: string;
-  bubbleStyle: "round" | "paper" | "card" | "cloud" | "tail" | "minimal" | "soft";
-  fontId: "sans" | "serif" | "stamp" | "mono" | "rounded" | "cute" | "elegant" | "hand";
+  bubbleStyle: "round" | "paper" | "card" | "cloud" | "tail" | "minimal" | "soft" | "line" | "stamp" | "glass" | "sketch" | "neon" | "bubble";
+  fontId: "sans" | "serif" | "stamp" | "mono" | "rounded" | "cute" | "elegant" | "hand" | "ink" | "neo" | "pop" | "art" | "script" | "gothic" | "display" | "pen";
   wallpaper: "paper" | "dots" | "lines" | "gradient" | "plain" | "custom";
   wallpaperImage: string;
   herAvatar: string;
@@ -58,6 +58,12 @@ export const BUBBLE_STYLES = [
   { id: "tail", name: "小尾巴" },
   { id: "minimal", name: "极简" },
   { id: "soft", name: "柔光" },
+  { id: "line", name: "简约线条" },
+  { id: "stamp", name: "印章气泡" },
+  { id: "glass", name: "玻璃拟态" },
+  { id: "sketch", name: "手绘风" },
+  { id: "neon", name: "霓虹灯牌" },
+  { id: "bubble", name: "3D立体" },
 ] as const;
 
 export const FONTS = [
@@ -69,6 +75,14 @@ export const FONTS = [
   { id: "cute", name: "可爱体", fontFamily: '"ZCOOL KuaiLe", "Noto Sans SC", sans-serif' },
   { id: "elegant", name: "优雅体", fontFamily: '"LXGW WenKai", "Noto Serif SC", serif' },
   { id: "hand", name: "手写体", fontFamily: '"Ma Shan Zheng", "Noto Sans SC", sans-serif' },
+  { id: "ink", name: "毛笔书法", fontFamily: '"ZCOOL QingKe HuangYou", "Noto Serif SC", serif' },
+  { id: "neo", name: "新宋体", fontFamily: '"Noto Serif SC", "SimSun", serif' },
+  { id: "pop", name: "波普风", fontFamily: '"Press Start 2P", "Noto Sans SC", monospace' },
+  { id: "art", name: "艺术字", fontFamily: '"Playfair Display", "Noto Serif SC", serif' },
+  { id: "script", name: "英文手写", fontFamily: '"Caveat", "Noto Sans SC", cursive' },
+  { id: "gothic", name: "哥特体", fontFamily: '"UnifrakturCook", "Noto Serif SC", serif' },
+  { id: "display", name: "艺术展示", fontFamily: '"Bungee Shade", "Noto Sans SC", sans-serif' },
+  { id: "pen", name: "钢笔字", fontFamily: '"Nanum Pen Script", "Noto Sans SC", cursive' },
 ] as const;
 
 export const WALLPAPERS = [

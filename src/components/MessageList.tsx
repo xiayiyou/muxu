@@ -8,6 +8,7 @@ export default function MessageList() {
   const activeConversationId = useAppStore((s) => s.activeConversationId);
   const contacts = useAppStore((s) => s.contacts);
   const beauty = useAppStore((s) => s.beauty);
+  const pat = useAppStore((s) => s.pat);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const conv = useMemo(
@@ -34,16 +35,39 @@ export default function MessageList() {
     return contacts.find((c) => c.id === senderId);
   };
 
+  // 获取联系人的私聊会话头像设置（群聊中使用各自会话的头像）
+  const getPrivateConvAvatar = (senderId: string): { text: string; image: string } => {
+    const privateConv = conversations.find(
+      (c) => c.type === "private" && c.memberIds.includes(senderId)
+    );
+    return {
+      text: privateConv?.herAvatarText || "",
+      image: privateConv?.herAvatarImage || "",
+    };
+  };
+
   const getAvatarText = (senderId: string): string => {
-    if (senderId === "me") return beauty.myAvatar;
+    if (senderId === "me") {
+      return conv?.myAvatarText || beauty.myAvatar;
+    }
     const contact = getContact(senderId);
-    return contact?.avatar || "?";
+    if (conv?.type === "group") {
+      const priv = getPrivateConvAvatar(senderId);
+      if (priv.text) return priv.text;
+    }
+    return contact?.avatar || conv?.herAvatarText || "?";
   };
 
   const getAvatarImage = (senderId: string): string => {
-    if (senderId === "me") return beauty.myAvatarImage;
+    if (senderId === "me") {
+      return conv?.myAvatarImage || beauty.myAvatarImage;
+    }
     const contact = getContact(senderId);
-    return contact?.avatarImage || "";
+    if (conv?.type === "group") {
+      const priv = getPrivateConvAvatar(senderId);
+      if (priv.image) return priv.image;
+    }
+    return contact?.avatarImage || conv?.herAvatarImage || beauty.herAvatarImage || "";
   };
 
   const renderTextWithMention = (text: string, mentionTarget?: string) => {
@@ -90,7 +114,6 @@ export default function MessageList() {
       <div className="mx-auto flex max-w-3xl flex-col gap-4">
         {messages.map((m, i) => {
           const prev = messages[i - 1];
-          const showAvatar = !prev || prev.sender !== m.sender;
           const isNew = i === messages.length - 1;
 
           if (m.type === "system") {
@@ -106,7 +129,6 @@ export default function MessageList() {
                 key={m.id}
                 message={m}
                 side={side}
-                showAvatar={showAvatar}
                 getContactName={getContactName}
                 getAvatarText={getAvatarText}
                 getAvatarImage={getAvatarImage}
@@ -121,7 +143,6 @@ export default function MessageList() {
                 key={m.id}
                 message={m}
                 side={side}
-                showAvatar={showAvatar}
                 getContactName={getContactName}
                 getAvatarText={getAvatarText}
                 getAvatarImage={getAvatarImage}
@@ -133,20 +154,19 @@ export default function MessageList() {
           return (
             <div key={m.id} className={`flex items-center gap-2 ${isLeft ? "justify-start" : "justify-end"}`}>
               {isLeft && (
-                <div className="flex w-11 shrink-0 justify-center">
-                  {showAvatar && (
-                    <MessageAvatar
-                      senderId={m.sender}
-                      avatarText={getAvatarText(m.sender)}
-                      avatarImage={getAvatarImage(m.sender)}
-                    />
-                  )}
+                <div className="flex w-9 shrink-0 justify-center">
+                  <MessageAvatar
+                    senderId={m.sender}
+                    avatarText={getAvatarText(m.sender)}
+                    avatarImage={getAvatarImage(m.sender)}
+                    onPat={() => pat(activeConversationId, m.sender)}
+                  />
                 </div>
               )}
               <div className={`flex flex-col ${isLeft ? "items-start" : "items-end"} max-w-[78%]`}>
-                {conv.type === "group" && isLeft && showAvatar && m.sender !== "me" && (
+                {conv.type === "group" && isLeft && m.sender !== "me" && (
                   <span
-                    className="mb-1 px-1 text-xs"
+                    className="mb-0.5 px-1 text-xs"
                     style={{ color: "color-mix(in srgb, var(--text) 60%, transparent)" }}
                   >
                     {getContactName(m.sender)}
@@ -161,21 +181,19 @@ export default function MessageList() {
                 />
               </div>
               {!isLeft && (
-                <div className="flex w-11 shrink-0 justify-center">
-                  {showAvatar && (
-                    <MessageAvatar
-                      senderId={m.sender}
-                      avatarText={getAvatarText(m.sender)}
-                      avatarImage={getAvatarImage(m.sender)}
-                    />
-                  )}
+                <div className="flex w-9 shrink-0 justify-center">
+                  <MessageAvatar
+                    senderId={m.sender}
+                    avatarText={getAvatarText(m.sender)}
+                    avatarImage={getAvatarImage(m.sender)}
+                  />
                 </div>
               )}
             </div>
           );
         })}
 
-        {isFlipping && <FlippingHint side={view === "me" ? "left" : "right"} />}
+        {isFlipping && <FlippingHint side={view === "me" ? "left" : "right"} name={getContactName(conv.memberIds[0])} />}
       </div>
     </div>
   );
@@ -186,21 +204,34 @@ function MessageAvatar({
   avatarText,
   avatarImage,
   size = "md",
+  onPat,
 }: {
   senderId: string;
   avatarText: string;
   avatarImage: string;
   size?: "sm" | "md";
+  onPat?: () => void;
 }) {
-  const dim = size === "sm" ? "h-9 w-9 text-xs" : "h-11 w-11 text-sm";
+  const [isPating, setIsPating] = useState(false);
+  const dim = size === "sm" ? "h-[36px] w-[36px] text-[12px]" : "h-[36px] w-[36px] text-[12px]";
   const bgVar = senderId === "me" ? "var(--accent)" : "var(--text)";
   const textVar = "var(--card)";
+
+  const handleDoubleClick = () => {
+    if (senderId !== "me" && onPat) {
+      setIsPating(true);
+      onPat();
+      setTimeout(() => setIsPating(false), 300);
+    }
+  };
 
   if (avatarImage) {
     return (
       <div
-        className={`shrink-0 overflow-hidden rounded-xl select-none ${dim}`}
-        style={{ boxShadow: "0 2px 0 rgba(0,0,0,0.15)" }}
+        className={`shrink-0 overflow-hidden rounded-lg select-none cursor-pointer transition-transform active:scale-95 ${dim} ${isPating ? "animate-bounce" : ""}`}
+        style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.15)" }}
+        onDoubleClick={handleDoubleClick}
+        title="双击拍一拍"
       >
         <img src={avatarImage} alt="avatar" className="h-full w-full object-cover" />
       </div>
@@ -209,12 +240,14 @@ function MessageAvatar({
 
   return (
     <div
-      className={`flex shrink-0 items-center justify-center rounded-xl font-stamp select-none ${dim}`}
+      className={`flex shrink-0 items-center justify-center rounded-lg font-stamp select-none cursor-pointer transition-transform active:scale-95 ${dim} ${isPating ? "animate-bounce" : ""}`}
       style={{
         background: bgVar,
         color: textVar,
-        boxShadow: "0 2px 0 rgba(0,0,0,0.15)",
+        boxShadow: "0 1px 2px rgba(0,0,0,0.15)",
       }}
+      onDoubleClick={handleDoubleClick}
+      title="双击拍一拍"
     >
       {avatarText}
     </div>
@@ -313,14 +346,14 @@ function MessageBubble({
 
   return (
     <>
-      <div className="relative animate-bubbleIn" style={{ maxWidth: "100%" }}>
+      <div className="relative animate-bubbleIn" style={{ maxWidth: "100%", minHeight: "36px" }}>
         <div
           style={{
             ...bubbleStyle,
             background: bgColor,
             color: "var(--text)",
           }}
-          className="px-4 py-2.5 text-[15px] leading-relaxed"
+          className="px-3 py-[0.4em] text-[15px] leading-relaxed"
         >
           {message.text && renderTextWithMention(message.text, message.mentionTarget)}
         </div>
@@ -333,7 +366,7 @@ function MessageBubble({
           🌸 心情 · {message.moodNote}
         </div>
       )}
-      <span className="mt-1 px-1 text-[10px]" style={{ color: "color-mix(in srgb, var(--text) 50%, transparent)" }}>
+      <span className="mt-0.5 px-1 text-[10px]" style={{ color: "color-mix(in srgb, var(--text) 50%, transparent)" }}>
         {time}
       </span>
     </>
@@ -343,7 +376,6 @@ function MessageBubble({
 function RPSBubble({
   message,
   side,
-  showAvatar,
   getContactName,
   getAvatarText,
   getAvatarImage,
@@ -351,7 +383,6 @@ function RPSBubble({
 }: {
   message: Message;
   side: "left" | "right";
-  showAvatar: boolean;
   getContactName: (id: string) => string;
   getAvatarText: (id: string) => string;
   getAvatarImage: (id: string) => string;
@@ -388,14 +419,12 @@ function RPSBubble({
   return (
     <div className={`flex items-center gap-2 ${isLeft ? "justify-start" : "justify-end"}`}>
       {isLeft && (
-        <div className="flex w-11 shrink-0 justify-center">
-          {showAvatar && (
-            <MessageAvatar
-              senderId={message.sender}
-              avatarText={getAvatarText(message.sender)}
-              avatarImage={getAvatarImage(message.sender)}
-            />
-          )}
+        <div className="flex w-9 shrink-0 justify-center">
+          <MessageAvatar
+            senderId={message.sender}
+            avatarText={getAvatarText(message.sender)}
+            avatarImage={getAvatarImage(message.sender)}
+          />
         </div>
       )}
       <div className={`flex flex-col ${isLeft ? "items-start" : "items-end"} max-w-[78%]`}>
@@ -430,19 +459,17 @@ function RPSBubble({
             {resultText()}
           </div>
         </div>
-        <span className="mt-1 px-1 text-[10px]" style={{ color: "color-mix(in srgb, var(--text) 50%, transparent)" }}>
+        <span className="mt-0.5 px-1 text-[10px]" style={{ color: "color-mix(in srgb, var(--text) 50%, transparent)" }}>
           {time}
         </span>
       </div>
       {!isLeft && (
-        <div className="flex w-11 shrink-0 justify-center">
-          {showAvatar && (
-            <MessageAvatar
-              senderId={message.sender}
-              avatarText={getAvatarText(message.sender)}
-              avatarImage={getAvatarImage(message.sender)}
-            />
-          )}
+        <div className="flex w-9 shrink-0 justify-center">
+          <MessageAvatar
+            senderId={message.sender}
+            avatarText={getAvatarText(message.sender)}
+            avatarImage={getAvatarImage(message.sender)}
+          />
         </div>
       )}
     </div>
@@ -452,7 +479,6 @@ function RPSBubble({
 function PollBubble({
   message,
   side,
-  showAvatar,
   getContactName,
   getAvatarText,
   getAvatarImage,
@@ -460,7 +486,6 @@ function PollBubble({
 }: {
   message: Message;
   side: "left" | "right";
-  showAvatar: boolean;
   getContactName: (id: string) => string;
   getAvatarText: (id: string) => string;
   getAvatarImage: (id: string) => string;
@@ -484,14 +509,12 @@ function PollBubble({
   return (
     <div className={`flex items-center gap-2 ${isLeft ? "justify-start" : "justify-end"}`}>
       {isLeft && (
-        <div className="flex w-11 shrink-0 justify-center">
-          {showAvatar && (
-            <MessageAvatar
-              senderId={message.sender}
-              avatarText={getAvatarText(message.sender)}
-              avatarImage={getAvatarImage(message.sender)}
-            />
-          )}
+        <div className="flex w-9 shrink-0 justify-center">
+          <MessageAvatar
+            senderId={message.sender}
+            avatarText={getAvatarText(message.sender)}
+            avatarImage={getAvatarImage(message.sender)}
+          />
         </div>
       )}
       <div className={`flex flex-col ${isLeft ? "items-start" : "items-end"} max-w-[78%]`}>
@@ -541,33 +564,36 @@ function PollBubble({
             );
           })}
         </div>
-        <span className="mt-1 px-1 text-[10px]" style={{ color: "color-mix(in srgb, var(--text) 50%, transparent)" }}>
+        <span className="mt-0.5 px-1 text-[10px]" style={{ color: "color-mix(in srgb, var(--text) 50%, transparent)" }}>
           {time}
         </span>
       </div>
       {!isLeft && (
-        <div className="flex w-11 shrink-0 justify-center">
-          {showAvatar && (
-            <MessageAvatar
-              senderId={message.sender}
-              avatarText={getAvatarText(message.sender)}
-              avatarImage={getAvatarImage(message.sender)}
-            />
-          )}
+        <div className="flex w-9 shrink-0 justify-center">
+          <MessageAvatar
+            senderId={message.sender}
+            avatarText={getAvatarText(message.sender)}
+            avatarImage={getAvatarImage(message.sender)}
+          />
         </div>
       )}
     </div>
   );
 }
 
-function FlippingHint({ side }: { side: "left" | "right" }) {
+function FlippingHint({ side, name }: { side: "left" | "right"; name?: string }) {
   const isLeft = side === "left";
   return (
     <div className={`flex items-center gap-2 ${isLeft ? "justify-start" : "justify-end"}`}>
-      {isLeft && <div className="w-11 shrink-0" />}
-      <div className="animate-bubbleIn">
+      {isLeft && <div className="w-9 shrink-0" />}
+      <div className="animate-bubbleIn flex flex-col gap-1">
+        {name && (
+          <span className="px-1 text-xs" style={{ color: "color-mix(in srgb, var(--text) 60%, transparent)" }}>
+            {name} 正在输入中...
+          </span>
+        )}
         <div
-          className="flex items-center gap-1.5 px-3.5 py-2.5"
+          className="flex items-center gap-1.5 px-3.5 py-2"
           style={{ background: "var(--her-card)", borderRadius: "1rem", boxShadow: "0 2px 8px -2px rgba(0,0,0,0.12)" }}
         >
           <span className="inline-block h-1.5 w-1.5 rounded-full animate-bounce [animation-delay:-0.2s]" style={{ background: "var(--accent)" }} />
@@ -575,7 +601,7 @@ function FlippingHint({ side }: { side: "left" | "right" }) {
           <span className="inline-block h-1.5 w-1.5 rounded-full animate-bounce" style={{ background: "var(--accent)" }} />
         </div>
       </div>
-      {!isLeft && <div className="w-11 shrink-0" />}
+      {!isLeft && <div className="w-9 shrink-0" />}
     </div>
   );
 }
@@ -615,6 +641,45 @@ function getBubbleStyle(style: string): React.CSSProperties {
       return {
         borderRadius: "1.5rem",
         boxShadow: "0 4px 16px -4px rgba(0,0,0,0.1), 0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent)",
+      };
+    case "line":
+      return {
+        borderRadius: "1.2rem",
+        border: "2px dashed color-mix(in srgb, var(--accent) 35%, transparent)",
+        boxShadow: "0 2px 8px -3px rgba(0,0,0,0.08)",
+      };
+    case "stamp":
+      return {
+        borderRadius: "0.3rem",
+        border: "2px solid var(--accent)",
+        boxShadow: "inset 0 0 0 1px var(--card), 0 2px 0 rgba(0,0,0,0.1)",
+      };
+    case "glass":
+      return {
+        borderRadius: "1.25rem",
+        background: "color-mix(in srgb, var(--card) 70%, transparent)",
+        backdropFilter: "blur(10px)",
+        boxShadow: "0 4px 20px -5px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.5)",
+        border: "1px solid color-mix(in srgb, var(--card-border) 60%, transparent)",
+      };
+    case "sketch":
+      return {
+        borderRadius: "1.1rem 1.3rem 1.2rem 1.4rem",
+        border: "2px solid color-mix(in srgb, var(--accent) 50%, transparent)",
+        boxShadow: "2px 2px 0 color-mix(in srgb, var(--accent) 25%, transparent)",
+        transform: "rotate(-0.3deg)",
+      };
+    case "neon":
+      return {
+        borderRadius: "1rem",
+        boxShadow: "0 0 10px color-mix(in srgb, var(--accent) 40%, transparent), 0 0 20px color-mix(in srgb, var(--accent) 20%, transparent), inset 0 0 5px color-mix(in srgb, var(--accent) 15%, transparent)",
+        border: "1px solid color-mix(in srgb, var(--accent) 50%, transparent)",
+      };
+    case "bubble":
+      return {
+        borderRadius: "1.5rem",
+        boxShadow: "inset 0 2px 0 rgba(255,255,255,0.6), inset 0 -2px 0 rgba(0,0,0,0.08), 0 4px 12px -3px rgba(0,0,0,0.15)",
+        border: "1px solid color-mix(in srgb, var(--card-border) 50%, transparent)",
       };
     default:
       return { borderRadius: "1rem" };

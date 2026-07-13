@@ -211,6 +211,28 @@ function RiceGame({ contactId }: { contactId: string }) {
     setTimeout(() => {
       setFloats((f) => f.filter((fl) => fl.id !== id));
     }, 1200);
+
+    if (Math.random() < 0.4) {
+      const state = useAppStore.getState();
+      const card = state.pickRandomCard(contactId, "chat");
+      if (card) {
+        const message = `${contact?.name}回应了我，饿了就快吃饭吧～`;
+        if ("Notification" in window && Notification.permission === "granted") {
+          try {
+            new Notification(contact?.name || "宝宝", {
+              body: message,
+              icon: contact?.avatarImage || undefined,
+            });
+          } catch (e) {
+            console.log("Notification failed", e);
+          }
+        }
+        document.title = `💬 ${contact?.name}回应了我`;
+        setTimeout(() => {
+          document.title = "苜蓿";
+        }, 5000);
+      }
+    }
   };
 
   const riceRemaining = Math.max(0, 100 - riceFullness);

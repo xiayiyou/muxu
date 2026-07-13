@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { useAppStore } from "@/store/app";
-import { FLAVOR_THEMES, SIMPLE_THEMES } from "@/theme/themes";
+import { FLAVOR_THEMES, SIMPLE_THEMES, RICH_THEMES } from "@/theme/themes";
 import { BUBBLE_STYLES, FONTS, WALLPAPERS } from "@/types/settings";
 import { RotateCcw, Upload, X } from "lucide-react";
 
@@ -51,6 +51,19 @@ export default function BeautyPanel() {
                 {t.name.split("·")[1]}
               </span>
             </button>
+          ))}
+        </div>
+        <div className="mb-3 mt-4 text-[11px]" style={{ color: "var(--text-soft)" }}>
+          八色调和
+        </div>
+        <div className="grid grid-cols-4 gap-2">
+          {RICH_THEMES.map((t) => (
+            <ThemeButton
+              key={t.id}
+              theme={t}
+              active={beauty.themeId === t.id}
+              onClick={() => setBeauty({ themeId: t.id })}
+            />
           ))}
         </div>
       </Section>
@@ -284,6 +297,11 @@ export default function BeautyPanel() {
         </div>
       </Section>
 
+      {/* 会话头像 */}
+      <Section title="会话头像（独立设置）">
+        <ConversationAvatarEditor />
+      </Section>
+
       {/* 重置 */}
       <button
         onClick={resetBeauty}
@@ -392,13 +410,34 @@ function AvatarEditor({
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const handleFile = (file: File) => {
+  const compressImage = (file: File, maxSize = 200): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let w = img.width;
+        let h = img.height;
+        if (w > h) {
+          if (w > maxSize) { h = (h * maxSize) / w; w = maxSize; }
+        } else {
+          if (h > maxSize) { w = (w * maxSize) / h; h = maxSize; }
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", 0.7));
+      };
+      const reader = new FileReader();
+      reader.onload = () => { img.src = reader.result as string; };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleFile = async (file: File) => {
     if (!file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      onChangeImage(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+    const compressed = await compressImage(file);
+    onChangeImage(compressed);
   };
 
   return (
@@ -410,11 +449,11 @@ function AvatarEditor({
         {/* 预览 */}
         <div className="relative shrink-0">
           {image ? (
-            <div className="relative h-10 w-10 overflow-hidden rounded-xl" style={{ boxShadow: "0 2px 0 rgba(0,0,0,0.15)" }}>
+            <div className="relative h-12 w-12 overflow-hidden rounded-full" style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }}>
               <img src={image} alt="avatar" className="h-full w-full object-cover" />
               <button
                 onClick={() => onChangeImage("")}
-                className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full shadow"
+                className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full shadow"
                 style={{ background: "var(--accent)", color: "var(--card)" }}
               >
                 <X className="h-2.5 w-2.5" />
@@ -422,8 +461,8 @@ function AvatarEditor({
             </div>
           ) : (
             <div
-              className="flex h-10 w-10 items-center justify-center rounded-xl font-stamp text-sm"
-              style={{ background: "var(--accent)", color: "var(--card)" }}
+              className="flex h-12 w-12 items-center justify-center rounded-full font-stamp text-[13px]"
+              style={{ background: "var(--accent)", color: "var(--card)", boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }}
             >
               {text}
             </div>
@@ -449,6 +488,157 @@ function AvatarEditor({
         style={{ borderColor: "var(--card-border)", color: "var(--text-soft)" }}
       >
         <Upload className="h-3 w-3" />
+        导入图片
+      </button>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) handleFile(f);
+          e.target.value = "";
+        }}
+      />
+    </div>
+  );
+}
+
+function ConversationAvatarEditor() {
+  const conversations = useAppStore((s) => s.conversations);
+  const setConversationAvatar = useAppStore((s) => s.setConversationAvatar);
+  const beauty = useAppStore((s) => s.beauty);
+
+  const privateConv = conversations.filter((c) => c.type === "private");
+
+  if (privateConv.length === 0) {
+    return (
+      <div className="text-[11px]" style={{ color: "var(--text-soft)" }}>
+        暂无私聊会话
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {privateConv.map((conv) => (
+        <div key={conv.id} className="rounded-lg border p-3" style={{ background: "var(--card)", borderColor: "var(--card-border)" }}>
+          <div className="mb-2 text-[11px] font-medium" style={{ color: "var(--text)" }}>
+            {conv.name || "会话"}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <ConversationAvatarItem
+              label="我的头像"
+              text={conv.myAvatarText || beauty.myAvatar}
+              image={conv.myAvatarImage || ""}
+              onChangeText={(v) => setConversationAvatar(conv.id, "my", v, conv.myAvatarImage)}
+              onChangeImage={(v) => setConversationAvatar(conv.id, "my", conv.myAvatarText, v)}
+            />
+            <ConversationAvatarItem
+              label="对方头像"
+              text={conv.herAvatarText || beauty.herAvatar}
+              image={conv.herAvatarImage || ""}
+              onChangeText={(v) => setConversationAvatar(conv.id, "her", v, conv.herAvatarImage)}
+              onChangeImage={(v) => setConversationAvatar(conv.id, "her", conv.herAvatarText, v)}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ConversationAvatarItem({
+  label,
+  text,
+  image,
+  onChangeText,
+  onChangeImage,
+}: {
+  label: string;
+  text: string;
+  image: string;
+  onChangeText: (v: string) => void;
+  onChangeImage: (v: string) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const compressImage = (file: File, maxSize = 200): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let w = img.width;
+        let h = img.height;
+        if (w > h) {
+          if (w > maxSize) { h = (h * maxSize) / w; w = maxSize; }
+        } else {
+          if (h > maxSize) { w = (w * maxSize) / h; h = maxSize; }
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", 0.7));
+      };
+      const reader = new FileReader();
+      reader.onload = () => { img.src = reader.result as string; };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleFile = async (file: File) => {
+    if (!file.type.startsWith("image/")) return;
+    const compressed = await compressImage(file);
+    onChangeImage(compressed);
+  };
+
+  return (
+    <div>
+      <div className="mb-1 text-[10px]" style={{ color: "var(--text-soft)" }}>
+        {label}
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="relative shrink-0">
+          {image ? (
+            <div className="relative h-[34px] w-[34px] overflow-hidden rounded-sm" style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.15)" }}>
+              <img src={image} alt="avatar" className="h-full w-full object-cover" />
+              <button
+                onClick={() => onChangeImage("")}
+                className="absolute -right-0.5 -top-0.5 flex h-3 w-3 items-center justify-center rounded-full shadow"
+                style={{ background: "var(--accent)", color: "var(--card)" }}
+              >
+                <X className="h-2 w-2" />
+              </button>
+            </div>
+          ) : (
+            <div
+              className="flex h-[34px] w-[34px] items-center justify-center rounded-sm font-stamp text-[12px]"
+              style={{ background: "var(--accent)", color: "var(--card)", boxShadow: "0 1px 2px rgba(0,0,0,0.15)" }}
+            >
+              {text}
+            </div>
+          )}
+        </div>
+        <input
+          value={text}
+          onChange={(e) => onChangeText(e.target.value)}
+          maxLength={4}
+          className="w-full rounded-lg border px-2 py-1 text-[11px] outline-none focus:border-[var(--accent)]"
+          style={{
+            background: "var(--card)",
+            borderColor: "var(--card-border)",
+            color: "var(--text)",
+          }}
+        />
+      </div>
+      <button
+        onClick={() => fileRef.current?.click()}
+        className="mt-1 flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[9px] transition hover:bg-black/5"
+        style={{ borderColor: "var(--card-border)", color: "var(--text-soft)" }}
+      >
+        <Upload className="h-2.5 w-2.5" />
         导入图片
       </button>
       <input

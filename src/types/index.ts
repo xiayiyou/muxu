@@ -118,4 +118,8 @@ export interface Conversation {
   isFlipping: boolean;
   view: ViewSide;
   memberIds: string[];
+  myAvatarText?: string;
+  myAvatarImage?: string;
+  herAvatarText?: string;
+  herAvatarImage?: string;
 }

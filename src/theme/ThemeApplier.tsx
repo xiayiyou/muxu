@@ -17,6 +17,7 @@ export default function ThemeApplier() {
     root.style.setProperty("--text", theme.text);
     root.style.setProperty("--text-soft", theme.textSoft);
     root.style.setProperty("--accent", theme.accent);
+    root.style.setProperty("--accent-2", (theme as any).accent2 || theme.accent);
     root.style.setProperty("--card", theme.card);
     root.style.setProperty("--card-border", theme.cardBorder);
     root.style.setProperty("--my-bubble", theme.myBubble);

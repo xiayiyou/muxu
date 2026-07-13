@@ -1,5 +1,4 @@
-import { Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, X } from "lucide-react";
-import { AppHeader } from "./HomeScreen";
+import { Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, X, ChevronLeft, Minimize2 } from "lucide-react";
 import { useAppStore } from "@/store/app";
 
 interface Props {
@@ -9,6 +8,22 @@ interface Props {
 export default function PhoneApp({ onBack }: Props) {
   const callRecords = useAppStore((s) => s.callRecords);
   const contacts = useAppStore((s) => s.contacts);
+  const conversations = useAppStore((s) => s.conversations);
+  const activeConversationId = useAppStore((s) => s.activeConversationId);
+  const setFloatingPhone = useAppStore((s) => s.setFloatingPhone);
+  const setPhoneOpen = useAppStore((s) => s.setPhoneOpen);
+
+  const handleMinimize = () => {
+    const conv = conversations.find((c) => c.id === activeConversationId);
+    const cid =
+      conv && conv.type === "private" && conv.memberIds[0]
+        ? conv.memberIds[0]
+        : contacts[0]?.id;
+    if (cid) {
+      setFloatingPhone(true, cid);
+      setPhoneOpen(false);
+    }
+  };
 
   const getContactAvatar = (contactId: string) => {
     return contacts.find((c) => c.id === contactId)?.avatar || "他";
@@ -34,7 +49,35 @@ export default function PhoneApp({ onBack }: Props) {
 
   return (
     <div className="flex h-full flex-col">
-      <AppHeader title="通话记录" onBack={onBack} />
+      <div
+        className="flex items-center justify-between border-b px-4 py-2.5"
+        style={{ borderColor: "var(--card-border)" }}
+      >
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onBack}
+            className="flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-black/5"
+            style={{ color: "var(--text-soft)" }}
+            aria-label="返回"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <span
+            className="font-serif text-sm font-bold"
+            style={{ color: "var(--text)" }}
+          >
+            通话记录
+          </span>
+        </div>
+        <button
+          onClick={handleMinimize}
+          className="flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-black/5"
+          style={{ color: "var(--text-soft)" }}
+          aria-label="最小化"
+        >
+          <Minimize2 className="h-4 w-4" />
+        </button>
+      </div>
 
       <div className="flex-1 overflow-y-auto p-3">
         {callRecords.length === 0 ? (

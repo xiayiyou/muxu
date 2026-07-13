@@ -58,6 +58,14 @@ interface MusicStore {
   songs: Song[];
   addSong: (title: string, url: string) => void;
   removeSong: (id: string) => void;
+  musicPlaying: boolean;
+  musicCurrentIndex: number;
+  musicFloating: boolean;
+  musicSwitchNote: string | null;
+  setMusicPlaying: (playing: boolean) => void;
+  setMusicCurrentIndex: (index: number) => void;
+  setMusicFloating: (floating: boolean) => void;
+  setMusicSwitchNote: (note: string | null) => void;
 }
 
 interface ContactStore {
@@ -87,6 +95,8 @@ interface ConversationStore {
   dismissCaught: () => void;
   dismissAngry: () => void;
   dismissMealAlert: () => void;
+  pat: (conversationId: string, contactId: string) => void;
+  setConversationAvatar: (conversationId: string, side: "my" | "her", text?: string, image?: string) => void;
 }
 
 interface GlobalState {
@@ -107,6 +117,27 @@ interface GlobalState {
   incomingCall: { contactId: string; contactName: string; contactAvatar: string } | null;
   answerCall: () => void;
   rejectCall: () => void;
+  floatingPhone: boolean;
+  floatingPhoneContactId: string | null;
+  setFloatingPhone: (open: boolean, contactId?: string) => void;
+  dismissFloatingPhone: () => void;
+  activeCall: {
+    recordId: string;
+    contactId: string;
+    contactName: string;
+    contactAvatar: string;
+    direction: "incoming" | "outgoing";
+    status: "calling" | "connected" | "rejected" | "ended";
+    startTime: number;
+  } | null;
+  activeCallDuration: number;
+  setActiveCallConnected: () => void;
+  setActiveCallRejected: () => void;
+  endActiveCall: () => void;
+  updateActiveCallDuration: (duration: number) => void;
+  callModalOpen: boolean;
+  setCallModalOpen: (open: boolean) => void;
+  minimizeActiveCall: () => void;
 }
 
 interface SettingsState {
@@ -312,58 +343,136 @@ export const useAppStore = create<
       showMemoBar: false,
       toggleMemoBar: () => set((s) => ({ showMemoBar: !s.showMemoBar })),
       incomingCall: null,
+      floatingPhone: false,
+      floatingPhoneContactId: null,
+      activeCall: null,
+      activeCallDuration: 0,
+      callModalOpen: false,
 
       startCall: (contactId) => {
         const contact = get().contacts.find((c) => c.id === contactId);
         if (!contact) return;
+        const recordId = uid("call");
+        const now = Date.now();
         const isRejected = Math.random() < 0.15;
         const record: CallRecord = {
-          id: uid("call"),
+          id: recordId,
           contactId,
           contactName: contact.name,
           direction: "outgoing",
           status: isRejected ? "rejected" : "connected",
-          duration: isRejected ? 0 : 0,
-          timestamp: Date.now(),
+          duration: 0,
+          timestamp: now,
         };
         set((s) => ({
           callRecords: [record, ...s.callRecords].slice(0, 100),
+          activeCall: {
+            recordId,
+            contactId,
+            contactName: contact.name,
+            contactAvatar: contact.avatar || "他",
+            direction: "outgoing",
+            status: "calling",
+            startTime: now,
+          },
+          activeCallDuration: 0,
+          callModalOpen: true,
         }));
-        if (!isRejected) {
-          window.setTimeout(() => {
-            const duration = Math.floor(Math.random() * 180) + 30;
+        const delay = 1500 + Math.random() * 1500;
+        window.setTimeout(() => {
+          if (isRejected) {
             set((s) => ({
-              callRecords: s.callRecords.map((r) =>
-                r.id === record.id ? { ...r, duration } : r
-              ),
+              activeCall: s.activeCall ? { ...s.activeCall, status: "rejected" } : null,
             }));
-          }, 3000);
-        }
+          } else {
+            set((s) => ({
+              activeCall: s.activeCall ? { ...s.activeCall, status: "connected" } : null,
+            }));
+            const randDuration = Math.floor(Math.random() * 180) + 30;
+            window.setTimeout(() => {
+              const state = get();
+              if (state.activeCall?.status === "connected") {
+                set((s) => ({
+                  callRecords: s.callRecords.map((r) =>
+                    r.id === recordId ? { ...r, duration: randDuration } : r
+                  ),
+                }));
+              }
+            }, 3000);
+          }
+        }, delay);
+      },
+
+      setActiveCallConnected: () => set((s) => ({
+        activeCall: s.activeCall ? { ...s.activeCall, status: "connected" } : null,
+      })),
+      setActiveCallRejected: () => set((s) => ({
+        activeCall: s.activeCall ? { ...s.activeCall, status: "rejected" } : null,
+      })),
+      endActiveCall: () => {
+        const state = get();
+        if (!state.activeCall) return;
+        set((s) => ({
+          callRecords: s.callRecords.map((r) =>
+            r.id === s.activeCall?.recordId ? { ...r, duration: s.activeCallDuration } : r
+          ),
+          activeCall: null,
+          activeCallDuration: 0,
+          callModalOpen: false,
+          floatingPhone: false,
+        }));
+      },
+      updateActiveCallDuration: (duration) => set({ activeCallDuration: duration }),
+      setCallModalOpen: (open) => set({ callModalOpen: open }),
+      minimizeActiveCall: () => {
+        const state = get();
+        if (!state.activeCall) return;
+        set((s) => ({
+          callModalOpen: false,
+          floatingPhone: true,
+          floatingPhoneContactId: s.activeCall?.contactId ?? null,
+        }));
       },
 
       answerCall: () => {
         const incoming = get().incomingCall;
         if (!incoming) return;
+        const recordId = uid("call");
+        const now = Date.now();
         const record: CallRecord = {
-          id: uid("call"),
+          id: recordId,
           contactId: incoming.contactId,
           contactName: incoming.contactName,
           direction: "incoming",
           status: "connected",
           duration: 0,
-          timestamp: Date.now(),
+          timestamp: now,
         };
         set((s) => ({
           callRecords: [record, ...s.callRecords].slice(0, 100),
           incomingCall: null,
+          activeCall: {
+            recordId,
+            contactId: incoming.contactId,
+            contactName: incoming.contactName,
+            contactAvatar: incoming.contactAvatar,
+            direction: "incoming",
+            status: "connected",
+            startTime: now,
+          },
+          activeCallDuration: 0,
+          callModalOpen: true,
         }));
+        const randDuration = Math.floor(Math.random() * 180) + 30;
         window.setTimeout(() => {
-          const duration = Math.floor(Math.random() * 180) + 30;
-          set((s) => ({
-            callRecords: s.callRecords.map((r) =>
-              r.id === record.id ? { ...r, duration } : r
-            ),
-          }));
+          const state = get();
+          if (state.activeCall?.status === "connected") {
+            set((s) => ({
+              callRecords: s.callRecords.map((r) =>
+                r.id === recordId ? { ...r, duration: randDuration } : r
+              ),
+            }));
+          }
         }, 3000);
       },
 
@@ -399,41 +508,45 @@ export const useAppStore = create<
           memos: [memo, ...s.memos].slice(0, 500),
         }));
 
-        // 写完备忘录后，1-3小时对方回复3-5条字卡到信箱
-        const hours = Math.random() * 2 + 1;
-        window.setTimeout(() => {
-          const state = useAppStore.getState();
-          const contact = state.contacts.find((c) => c.id === contactId);
-          if (!contact) return;
-          const allCards = [
-            ...contact.cards.chat,
-            ...contact.cards.body,
-            ...contact.cards.mood,
-            ...contact.cards.workContent,
-            ...contact.cards.workStatus,
-            ...contact.cards.travel,
-            ...contact.cards.breakfast,
-            ...contact.cards.lunch,
-            ...contact.cards.dinner,
-          ];
-          if (allCards.length === 0) return;
-          const count = Math.floor(Math.random() * 3) + 3;
-          const cardContents: string[] = [];
-          for (let i = 0; i < count; i++) {
-            const card = allCards[Math.floor(Math.random() * allCards.length)];
-            cardContents.push(card.content);
-          }
-          const mergedText = cardContents.join("\n\n");
-          useAppStore.setState((s) => ({
-            memos: [{
-              id: uid("reply"),
-              contactId,
-              text: mergedText,
-              from: contactId,
-              timestamp: Date.now(),
-            }, ...s.memos].slice(0, 500),
-          }));
-        }, hours * 60 * 60 * 1000);
+        // 备忘录回复：每1-3小时回复一次，从上一次回复时间开始计算
+        const scheduleNextMemoReply = () => {
+          const hours = Math.random() * 2 + 1;
+          window.setTimeout(() => {
+            const state = useAppStore.getState();
+            const contact = state.contacts.find((c) => c.id === contactId);
+            if (!contact) return;
+            const allCards = [
+              ...contact.cards.chat,
+              ...contact.cards.body,
+              ...contact.cards.mood,
+              ...contact.cards.workContent,
+              ...contact.cards.workStatus,
+              ...contact.cards.travel,
+              ...contact.cards.breakfast,
+              ...contact.cards.lunch,
+              ...contact.cards.dinner,
+            ];
+            if (allCards.length === 0) { scheduleNextMemoReply(); return; }
+            const count = Math.floor(Math.random() * 3) + 3;
+            const cardContents: string[] = [];
+            for (let i = 0; i < count; i++) {
+              const card = allCards[Math.floor(Math.random() * allCards.length)];
+              cardContents.push(card.content);
+            }
+            const mergedText = cardContents.join("\n\n");
+            useAppStore.setState((s) => ({
+              memos: [{
+                id: uid("reply"),
+                contactId,
+                text: mergedText,
+                from: contactId,
+                timestamp: Date.now(),
+              }, ...s.memos].slice(0, 500),
+            }));
+            scheduleNextMemoReply();
+          }, hours * 60 * 60 * 1000);
+        };
+        scheduleNextMemoReply();
       },
 
       openMailbox: (contactId) => {
@@ -719,6 +832,16 @@ export const useAppStore = create<
           songs: s.songs.filter((so) => so.id !== id),
         })),
 
+      musicPlaying: false,
+      musicCurrentIndex: 0,
+      musicFloating: false,
+      musicSwitchNote: null,
+
+      setMusicPlaying: (playing) => set({ musicPlaying: playing }),
+      setMusicCurrentIndex: (index) => set({ musicCurrentIndex: index }),
+      setMusicFloating: (floating) => set({ musicFloating: floating }),
+      setMusicSwitchNote: (note) => set({ musicSwitchNote: note }),
+
       // =========== 联系人 ===========
       contacts: [],
       activeContactId: null,
@@ -827,11 +950,57 @@ export const useAppStore = create<
         }));
       },
 
+      pat: (conversationId, contactId) => {
+        const state = get();
+        const contact = state.contacts.find((c) => c.id === contactId);
+        if (!contact) return;
+
+        const patMsg: Message = {
+          id: uid("pat"),
+          sender: "me",
+          type: "system",
+          systemText: `你拍了拍 ${contact.name}`,
+          timestamp: Date.now(),
+        };
+
+        set((s) => ({
+          conversations: s.conversations.map((c) =>
+            c.id === conversationId
+              ? { ...c, messages: [...c.messages, patMsg] }
+              : c
+          ),
+        }));
+
+        const delay = randRange(2000, 5000);
+        window.setTimeout(() => {
+          const currentState = get();
+          const card = currentState.pickRandomCard(contactId, "chat");
+          if (!card) return;
+
+          const herMsg: Message = {
+            id: uid("her"),
+            sender: contactId,
+            type: "text",
+            text: card.content,
+            card,
+            timestamp: Date.now(),
+          };
+
+          set((s) => ({
+            conversations: s.conversations.map((c) =>
+              c.id === conversationId
+                ? { ...c, messages: [...c.messages, herMsg] }
+                : c
+            ),
+          }));
+        }, delay);
+      },
+
       send: (conversationId, text) => {
         const trimmed = text.trim();
         if (!trimmed) return;
         const conv = get().conversations.find((c) => c.id === conversationId);
-        if (!conv || conv.isFlipping) return;
+        if (!conv) return;
 
         const myMsg: Message = {
           id: uid("me"),
@@ -844,7 +1013,7 @@ export const useAppStore = create<
         set((s) => ({
           conversations: s.conversations.map((c) =>
             c.id === conversationId
-              ? { ...c, messages: [...c.messages, myMsg], isFlipping: true }
+              ? { ...c, messages: [...c.messages, myMsg] }
               : c
           ),
         }));
@@ -854,15 +1023,28 @@ export const useAppStore = create<
 
         if (conv.type === "private") {
           const contactId = conv.memberIds[0];
+          const contact = get().contacts.find((c) => c.id === contactId);
+          const alreadyNotified = (conv as any)._workNotified === contact?.status.work.status;
+          if (contact?.status.work.status === "working" && !alreadyNotified) {
+            const workMsg: Message = {
+              id: uid("work"),
+              sender: "system",
+              type: "system",
+              systemText: `${contact.name} 正在工作中`,
+              timestamp: Date.now(),
+            };
+            set((s) => ({
+              conversations: s.conversations.map((c) =>
+                c.id === conversationId
+                  ? { ...c, messages: [...c.messages, workMsg], _workNotified: contact.status.work.status } as any
+                  : c
+              ),
+            }));
+          }
           const replyCount = Math.floor(Math.random() * 3) + 1;
 
           const sendNextReply = (index: number) => {
             if (index >= replyCount) {
-              set((s) => ({
-                conversations: s.conversations.map((c) =>
-                  c.id === conversationId ? { ...c, isFlipping: false } : c
-                ),
-              }));
               return;
             }
 
@@ -870,7 +1052,7 @@ export const useAppStore = create<
             window.setTimeout(() => {
               const state = get();
 
-              if (index === 0 && Math.random() < 0.08 && state.songs.length > 0) {
+              if (index === 0 && Math.random() < 0.02 && state.songs.length > 0) {
                 const song = state.songs[Math.floor(Math.random() * state.songs.length)];
                 const musicMsg: Message = {
                   id: uid("music"),
@@ -891,7 +1073,7 @@ export const useAppStore = create<
                 return;
               }
 
-              if (index === 0 && waterReminder && Math.random() < 0.06) {
+              if (index === 0 && waterReminder && Math.random() < 0.03) {
                 const waterMsg: Message = {
                   id: uid("water"),
                   sender: contactId,
@@ -941,39 +1123,38 @@ export const useAppStore = create<
                   ),
                 };
               });
+
+              if (document.hidden && "Notification" in window && Notification.permission === "granted") {
+                const contact = get().contacts.find((c) => c.id === contactId);
+                try {
+                  new Notification(contact?.name || "宝宝", {
+                    body: card.content.length > 50 ? card.content.slice(0, 50) + "..." : card.content,
+                    icon: contact?.avatarImage || undefined,
+                    badge: contact?.avatarImage || undefined,
+                  });
+                } catch (e) {
+                  console.log("Notification failed", e);
+                }
+              }
+
               sendNextReply(index + 1);
             }, delay);
           };
 
           sendNextReply(0);
         } else {
-          const replyCount = Math.floor(Math.random() * 4) + 3;
+          const replyCount = Math.floor(Math.random() * 4) + 2;
           const memberIds = conv.memberIds;
-          // 先随机选一个联系人，由他连续发消息
-          const speakerId = memberIds[Math.floor(Math.random() * memberIds.length)];
-          const speaker = get().contacts.find((c) => c.id === speakerId);
-          if (!speaker) {
-            set((s) => ({
-              conversations: s.conversations.map((c) =>
-                c.id === conversationId ? { ...c, isFlipping: false } : c
-              ),
-            }));
-            return;
-          }
 
           const sendNextReply = (index: number) => {
             if (index >= replyCount) {
-              set((s) => ({
-                conversations: s.conversations.map((c) =>
-                  c.id === conversationId ? { ...c, isFlipping: false } : c
-                ),
-              }));
               return;
             }
 
             const delay = randRange(replySpeedMin * 1000, replySpeedMax * 1000);
             window.setTimeout(() => {
               const state = get();
+              const speakerId = memberIds[Math.floor(Math.random() * memberIds.length)];
               const card = state.pickRandomCard(speakerId, "chat");
               if (!card) {
                 sendNextReply(index + 1);
@@ -1037,6 +1218,70 @@ export const useAppStore = create<
             c.id === conversationId ? { ...c, messages: [...c.messages, msg] } : c
           ),
         }));
+
+        if (senderId === "me") {
+          const { replySpeedMin, replySpeedMax } = get().chat;
+          const contactId = conv.memberIds[0];
+          const contact = get().contacts.find((c) => c.id === contactId);
+
+          if (conv.type === "private" && contact) {
+            const delay = randRange(replySpeedMin * 1000, replySpeedMax * 1000);
+            window.setTimeout(() => {
+              const state = get();
+              const card = state.pickRandomCard(contactId, "chat");
+              if (!card) return;
+
+              const herMsg: Message = {
+                id: uid("her"),
+                sender: contactId,
+                type: "text",
+                text: card.content,
+                card,
+                timestamp: Date.now(),
+              };
+
+              set((s) => ({
+                conversations: s.conversations.map((c) =>
+                  c.id === conversationId
+                    ? { ...c, messages: [...c.messages, herMsg] }
+                    : c
+                ),
+              }));
+            }, delay);
+          } else if (conv.type === "group") {
+            const replyCount = Math.floor(Math.random() * 4) + 2;
+            const sendNext = (index: number) => {
+              if (index >= replyCount) return;
+              const delay = randRange(replySpeedMin * 1000, replySpeedMax * 1000);
+              window.setTimeout(() => {
+                const state = get();
+                const members = state.contacts.filter((c) => conv.memberIds.includes(c.id));
+                const randomMember = members[Math.floor(Math.random() * members.length)];
+                const card = state.pickRandomCard(randomMember.id, "chat");
+                if (!card) { sendNext(index + 1); return; }
+
+                const herMsg: Message = {
+                  id: uid("her"),
+                  sender: randomMember.id,
+                  type: "text",
+                  text: card.content,
+                  card,
+                  timestamp: Date.now(),
+                };
+
+                set((s) => ({
+                  conversations: s.conversations.map((c) =>
+                    c.id === conversationId
+                      ? { ...c, messages: [...c.messages, herMsg] }
+                      : c
+                  ),
+                }));
+                sendNext(index + 1);
+              }, delay);
+            };
+            sendNext(0);
+          }
+        }
       },
 
       sendRPS: (conversationId, targetId, myChoice) => {
@@ -1121,10 +1366,31 @@ export const useAppStore = create<
         set({ phoneOpen: open });
       },
 
+      setFloatingPhone: (open, contactId) =>
+        set(
+          open
+            ? { floatingPhone: true, floatingPhoneContactId: contactId ?? null }
+            : { floatingPhone: false, floatingPhoneContactId: null }
+        ),
+
+      dismissFloatingPhone: () => set({ floatingPhone: false, floatingPhoneContactId: null }),
+
       setSettingsOpen: (open) => set({ settingsOpen: open }),
       dismissCaught: () => set({ caughtMessage: null }),
       dismissAngry: () => set({ angryAlert: false }),
       dismissMealAlert: () => set({ mealAlert: null }),
+
+      setConversationAvatar: (conversationId, side, text, image) =>
+        set((s) => ({
+          conversations: s.conversations.map((c) => {
+            if (c.id !== conversationId) return c;
+            if (side === "my") {
+              return { ...c, myAvatarText: text, myAvatarImage: image };
+            } else {
+              return { ...c, herAvatarText: text, herAvatarImage: image };
+            }
+          }),
+        })),
 
       // =========== 设置 ===========
       beauty: DEFAULT_BEAUTY,
@@ -1139,10 +1405,10 @@ export const useAppStore = create<
       partialize: (state) => ({
         contacts: state.contacts,
         activeContactId: state.activeContactId,
-        conversations: state.conversations.map((c) => ({
-          ...c,
-          messages: c.messages.slice(-50),
-        })),
+        conversations: state.conversations.map((c) => {
+          const { _workNotified, ...rest } = c as any;
+          return { ...rest, messages: rest.messages.slice(-50) };
+        }),
         activeConversationId: state.activeConversationId,
         groupConversationId: state.groupConversationId,
         cardGroups: state.cardGroups,
@@ -1153,6 +1419,7 @@ export const useAppStore = create<
         callRecords: state.callRecords,
         memos: state.memos,
         activeCardLibContactId: state.activeCardLibContactId,
+        musicCurrentIndex: state.musicCurrentIndex,
       }),
       onRehydrateStorage: () => (state: any) => {
         if (!state) return;
@@ -1253,6 +1520,51 @@ export const useAppStore = create<
           }, hours * 60 * 60 * 1000);
         };
         setupAutoActions();
+
+        // 信箱对方主动送信：8-16小时随机间隔
+        const setupMailboxSend = () => {
+          const hours = Math.random() * 8 + 8;
+          window.setTimeout(() => {
+            const store = useAppStore.getState();
+            store.contacts.forEach((contact) => {
+              const allCards: Card[] = [
+                ...contact.cards.chat,
+                ...contact.cards.body,
+                ...contact.cards.mood,
+                ...contact.cards.workContent,
+                ...contact.cards.workStatus,
+                ...contact.cards.travel,
+                ...contact.cards.breakfast,
+                ...contact.cards.lunch,
+                ...contact.cards.dinner,
+              ];
+              const stickers = store.stickers;
+              const replyCount = Math.floor(Math.random() * 5) + 8;
+              const cardContents: string[] = [];
+              for (let i = 0; i < replyCount; i++) {
+                const useSticker = stickers.length > 0 && Math.random() < 0.2;
+                if (useSticker) {
+                  cardContents.push("[表情包]");
+                } else if (allCards.length > 0) {
+                  const card = allCards[Math.floor(Math.random() * allCards.length)];
+                  cardContents.push(card.content);
+                }
+              }
+              const mergedText = cardContents.join("\n\n");
+              useAppStore.setState((s) => ({
+                memos: [{
+                  id: uid("mbox-auto"),
+                  contactId: contact.id,
+                  text: mergedText,
+                  from: contact.id,
+                  timestamp: Date.now(),
+                }, ...s.memos].slice(0, 500),
+              }));
+            });
+            setupMailboxSend();
+          }, hours * 60 * 60 * 1000);
+        };
+        setupMailboxSend();
 
         // 电量更新：约2.5小时更新一次
         const setupBatteryUpdate = () => {

@@ -663,8 +663,35 @@ function StickerSection() {
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [importing, setImporting] = useState(false);
 
-  const handleFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const compressImage = (file: File, maxSize = 300): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let w = img.width;
+        let h = img.height;
+        if (w > h) {
+          if (w > maxSize) { h = (h * maxSize) / w; w = maxSize; }
+        } else {
+          if (h > maxSize) { w = (w * maxSize) / h; h = maxSize; }
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", 0.7));
+      };
+      img.onerror = reject;
+      const reader = new FileReader();
+      reader.onload = () => { img.src = reader.result as string; };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []).filter((f) =>
       f.type.startsWith("image/"),
     );
@@ -672,20 +699,14 @@ function StickerSection() {
       e.target.value = "";
       return;
     }
-    Promise.all(
-      files.map(
-        (file) =>
-          new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result as string);
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-          }),
-      ),
-    ).then((images) => {
+    setImporting(true);
+    try {
+      const images = await Promise.all(files.map((f) => compressImage(f)));
       addStickers(images);
+    } finally {
+      setImporting(false);
       e.target.value = "";
-    });
+    }
   };
 
   const toggleSelect = (id: string) => {
@@ -718,11 +739,12 @@ function StickerSection() {
       <div className="flex items-center gap-2">
         <button
           onClick={() => fileRef.current?.click()}
-          className="flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] transition hover:bg-black/5"
+          disabled={importing}
+          className="flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] transition hover:bg-black/5 disabled:opacity-40"
           style={{ borderColor: "var(--card-border)", color: "var(--text)" }}
         >
           <Upload className="h-3.5 w-3.5" />
-          导入
+          {importing ? "导入中..." : "导入"}
         </button>
         <button
           onClick={selectAll}
