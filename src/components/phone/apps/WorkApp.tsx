@@ -43,6 +43,9 @@ export default function WorkApp({ onBack }: { onBack: () => void }) {
           <div className="mt-1 text-[12px]" style={{ color: "var(--text)" }}>
             {work.content}
           </div>
+          <div className="mt-1 text-[11px]" style={{ color: "var(--text-soft)" }}>
+            📍 {work.location}
+          </div>
           {work.overtime && (
             <div
               className="mt-2 inline-block rounded-full px-2 py-0.5 text-[10px]"

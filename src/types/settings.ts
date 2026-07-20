@@ -23,6 +23,7 @@ export interface ChatSettings {
   showMoodLabel: boolean;
   moodCardEnabled: boolean;
   waterReminder: boolean;
+  pushNotification: boolean;
 }
 
 export const DEFAULT_BEAUTY: BeautySettings = {
@@ -48,6 +49,7 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   showMoodLabel: true,
   moodCardEnabled: true,
   waterReminder: true,
+  pushNotification: true,
 };
 
 export const BUBBLE_STYLES = [

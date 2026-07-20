@@ -1,15 +1,27 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useAppStore } from "@/store/app";
-import type { Message, Contact } from "@/types";
-import { Music, Play, Pause } from "lucide-react";
+import type { Message, Contact, TomatoThrow, ViewSide } from "@/types";
+import { Music, Play, Pause, Reply, RotateCcw, Trash2 } from "lucide-react";
 
 export default function MessageList() {
   const conversations = useAppStore((s) => s.conversations);
   const activeConversationId = useAppStore((s) => s.activeConversationId);
   const contacts = useAppStore((s) => s.contacts);
   const beauty = useAppStore((s) => s.beauty);
+  const themeId = beauty.themeId;
+  const isCuteMoe = themeId === "cute-moe";
   const pat = useAppStore((s) => s.pat);
+  const quoteMessage = useAppStore((s) => s.quoteMessage);
+  const recallMessage = useAppStore((s) => s.recallMessage);
+  const deleteMessage = useAppStore((s) => s.deleteMessage);
+  const throwTomato = useAppStore((s) => s.throwTomato);
+  const tomatoThrows = useAppStore((s) => s.tomatoThrows);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [contextMenu, setContextMenu] = useState<{ messageId: string; x: number; y: number; sender: string } | null>(null);
+  const [tomatoPicker, setTomatoPicker] = useState<{ senderId: string; msgId: string; x: number; y: number } | null>(null);
+  const [tomatoMsgCollapsed, setTomatoMsgCollapsed] = useState(true);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
 
   const conv = useMemo(
     () => conversations.find((c) => c.id === activeConversationId),
@@ -19,6 +31,114 @@ export default function MessageList() {
   const messages = conv?.messages || [];
   const isFlipping = conv?.isFlipping || false;
   const view = conv?.view || "me";
+
+  useEffect(() => {
+    const handleClick = () => setContextMenu(null);
+    document.addEventListener("click", handleClick);
+    return () => document.removeEventListener("click", handleClick);
+  }, []);
+
+  const handleLongPress = useCallback((e: React.TouchEvent | React.MouseEvent, messageId: string, sender: string) => {
+    e.preventDefault();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = e.type === "contextmenu" ? (e as React.MouseEvent).clientX : rect.left + rect.width / 2;
+    const y = e.type === "contextmenu" ? (e as React.MouseEvent).clientY : rect.top;
+    setContextMenu({ messageId, x, y, sender });
+  }, []);
+
+  const handleTouchStart = useCallback((messageId: string, sender: string) => {
+    longPressTimer.current = setTimeout(() => {
+      setContextMenu((prev) => {
+        if (prev?.messageId === messageId) return prev;
+        const el = document.querySelector(`[data-msg-id="${messageId}"]`);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          return { messageId, x: rect.left + rect.width / 2, y: rect.top, sender };
+        }
+        return { messageId, x: window.innerWidth / 2, y: window.innerHeight / 2, sender };
+      });
+    }, 500);
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }, []);
+
+  const lastTomatoTime = useRef(0);
+  const lastTomatoTarget = useRef<string | null>(null);
+  const avatarSwipeStart = useRef<{ x: number; y: number; senderId: string; msgId: string } | null>(null);
+
+  const showTomatoPicker = useCallback((senderId: string, msgId: string = "", clientX: number, clientY: number) => {
+    if (!conv) return;
+    if (senderId === "me") return;
+    setTomatoPicker({ senderId, msgId, x: clientX, y: clientY });
+  }, [conv]);
+
+  const handlePickTomato = useCallback((count: number) => {
+    if (!tomatoPicker || !activeConversationId) return;
+    const now = Date.now();
+    if (now - lastTomatoTime.current < 1000 && lastTomatoTarget.current === tomatoPicker.senderId) {
+      setTomatoPicker(null);
+      return;
+    }
+    lastTomatoTime.current = now;
+    lastTomatoTarget.current = tomatoPicker.senderId;
+    throwTomato(activeConversationId, "me", tomatoPicker.senderId, tomatoPicker.msgId, false, count);
+    setTomatoPicker(null);
+  }, [tomatoPicker, activeConversationId, throwTomato]);
+
+  const handleAvatarSwipeStart = useCallback((senderId: string, msgId: string, clientX: number, clientY: number) => {
+    if (!conv || senderId === "me") return;
+    avatarSwipeStart.current = { x: clientX, y: clientY, senderId, msgId };
+  }, [conv]);
+
+  const handleAvatarSwipeMove = useCallback((clientX: number, clientY: number) => {
+    const start = avatarSwipeStart.current;
+    if (!start) return;
+    const dx = clientX - start.x;
+    const dy = clientY - start.y;
+    if (dx < -50 && Math.abs(dx) > Math.abs(dy) * 2) {
+      showTomatoPicker(start.senderId, start.msgId, start.x, start.y);
+      avatarSwipeStart.current = null;
+    }
+  }, [showTomatoPicker]);
+
+  const handleAvatarSwipeEnd = useCallback(() => {
+    avatarSwipeStart.current = null;
+  }, []);
+
+  // 鼠标左滑触发
+  const avatarMouseDown = useRef<{ x: number; y: number; senderId: string; msgId: string } | null>(null);
+
+  const handleAvatarMouseDown = useCallback((senderId: string, msgId: string, clientX: number, clientY: number) => {
+    if (!conv || senderId === "me") return;
+    avatarMouseDown.current = { x: clientX, y: clientY, senderId, msgId };
+  }, [conv]);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!avatarMouseDown.current) return;
+      const start = avatarMouseDown.current;
+      const dx = e.clientX - start.x;
+      const dy = e.clientY - start.y;
+      if (dx < -50 && Math.abs(dx) > Math.abs(dy) * 2) {
+        showTomatoPicker(start.senderId, start.msgId, start.x, start.y);
+        avatarMouseDown.current = null;
+      }
+    };
+    const handleMouseUp = () => {
+      avatarMouseDown.current = null;
+    };
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [showTomatoPicker]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -114,10 +234,28 @@ export default function MessageList() {
       <div className="mx-auto flex max-w-3xl flex-col gap-4">
         {messages.map((m, i) => {
           const prev = messages[i - 1];
+          const next = messages[i + 1];
           const isNew = i === messages.length - 1;
 
+          const isTomatoSystemMsg = m.type === "system" && (m.systemText?.includes("番茄") || m.systemText?.includes("扔了"));
+          const prevIsTomato = prev?.type === "system" && (prev.systemText?.includes("番茄") || prev.systemText?.includes("扔了"));
+          const nextIsTomato = next?.type === "system" && (next.systemText?.includes("番茄") || next.systemText?.includes("扔了"));
+
+          // 折叠模式下，只显示第一条番茄消息，后面的跳过
+          if (tomatoMsgCollapsed && isTomatoSystemMsg && prevIsTomato) {
+            return null;
+          }
+
           if (m.type === "system") {
-            return <SystemMessage key={m.id} message={m} />;
+            const hasMoreTomato = isTomatoSystemMsg && (nextIsTomato || prevIsTomato);
+            return (
+              <SystemMessage
+                key={m.id}
+                message={m}
+                collapsed={tomatoMsgCollapsed && hasMoreTomato}
+                onToggleCollapse={hasMoreTomato ? () => setTomatoMsgCollapsed((v) => !v) : undefined}
+              />
+            );
           }
 
           const side = getSide(m.sender);
@@ -151,8 +289,29 @@ export default function MessageList() {
             );
           }
 
+          if (m.recalled) {
+            const side = getSide(m.sender);
+            const isMine = (view === "me" && m.sender === "me") || (view === "her" && m.sender !== "me");
+            return (
+              <div key={m.id} className={`flex items-center gap-2 ${side === "left" ? "justify-start" : "justify-end"}`}>
+                {side === "left" && <div className="w-9 shrink-0" />}
+                <div className="py-1 px-3 text-[13px] italic" style={{ color: "var(--text-soft)" }}>
+                  {isMine ? "你撤回了一条消息" : "对方撤回了一条消息"}
+                </div>
+                {side === "right" && <div className="w-9 shrink-0" />}
+              </div>
+            );
+          }
+
           return (
-            <div key={m.id} className={`flex items-center gap-2 ${isLeft ? "justify-start" : "justify-end"}`}>
+            <div key={m.id} className={`flex items-center gap-2 ${isLeft ? "justify-start" : "justify-end"}`}
+              data-msg-id={m.id}
+              data-sender={m.sender}
+              onContextMenu={(e) => handleLongPress(e, m.id, m.sender)}
+              onTouchStart={() => handleTouchStart(m.id, m.sender)}
+              onTouchEnd={handleTouchEnd}
+              onTouchMove={handleTouchEnd}
+            >
               {isLeft && (
                 <div className="flex w-9 shrink-0 justify-center">
                   <MessageAvatar
@@ -160,15 +319,26 @@ export default function MessageList() {
                     avatarText={getAvatarText(m.sender)}
                     avatarImage={getAvatarImage(m.sender)}
                     onPat={() => pat(activeConversationId, m.sender)}
+                    onSwipeStart={handleAvatarSwipeStart}
+                    onSwipeMove={handleAvatarSwipeMove}
+                    onSwipeEnd={handleAvatarSwipeEnd}
+                    onMouseDown={handleAvatarMouseDown}
+                    msgId={m.id}
+                    tomatoCount={tomatoThrows.filter((t) => t.targetMsgId === m.id && t.conversationId === activeConversationId).length}
                   />
                 </div>
               )}
               <div className={`flex flex-col ${isLeft ? "items-start" : "items-end"} max-w-[78%]`}>
-                {conv.type === "group" && isLeft && m.sender !== "me" && (
+                {isLeft && m.sender !== "me" && (
                   <span
-                    className="mb-0.5 px-1 text-xs"
+                    className="mb-0.5 px-1 text-xs cursor-pointer select-none active:opacity-60 flex items-center gap-1"
                     style={{ color: "color-mix(in srgb, var(--text) 60%, transparent)" }}
+                    onDoubleClick={(e) => showTomatoPicker(m.sender, m.id, e.clientX, e.clientY)}
+                    title="双击扔番茄"
                   >
+                    {m.isAutoInitiated && (
+                      <span className="text-[#FFB347]" style={{ fontSize: "10px" }}>⭐</span>
+                    )}
                     {getContactName(m.sender)}
                   </span>
                 )}
@@ -186,6 +356,12 @@ export default function MessageList() {
                     senderId={m.sender}
                     avatarText={getAvatarText(m.sender)}
                     avatarImage={getAvatarImage(m.sender)}
+                    onSwipeStart={handleAvatarSwipeStart}
+                    onSwipeMove={handleAvatarSwipeMove}
+                    onSwipeEnd={handleAvatarSwipeEnd}
+                    onMouseDown={handleAvatarMouseDown}
+                    msgId={m.id}
+                    tomatoCount={tomatoThrows.filter((t) => t.targetMsgId === m.id && t.conversationId === activeConversationId).length}
                   />
                 </div>
               )}
@@ -195,9 +371,107 @@ export default function MessageList() {
 
         {isFlipping && <FlippingHint side={view === "me" ? "left" : "right"} name={getContactName(conv.memberIds[0])} />}
       </div>
+
+      {contextMenu && activeConversationId && (
+        <div
+          className="fixed inset-0 z-50"
+          onClick={(e) => { e.stopPropagation(); setContextMenu(null); }}
+        >
+          <div
+            className="absolute z-50 flex flex-col rounded-xl border shadow-xl overflow-hidden min-w-[120px]"
+            style={{
+              left: Math.min(contextMenu.x, window.innerWidth - 140),
+              top: Math.min(contextMenu.y - 10, window.innerHeight - 160),
+              background: "var(--card)",
+              borderColor: "var(--card-border)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => {
+                quoteMessage(activeConversationId, contextMenu.messageId);
+                setContextMenu(null);
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 text-[13px] transition hover:bg-black/5"
+              style={{ color: "var(--text)" }}
+            >
+              <Reply className="h-4 w-4" />
+              引用
+            </button>
+            {contextMenu.sender === "me" && (
+              <button
+                onClick={() => {
+                  recallMessage(activeConversationId, contextMenu.messageId);
+                  setContextMenu(null);
+                }}
+                className="flex items-center gap-2 px-4 py-2.5 text-[13px] transition hover:bg-black/5"
+                style={{ color: "var(--text)" }}
+              >
+                <RotateCcw className="h-4 w-4" />
+                撤回
+              </button>
+            )}
+            <button
+              onClick={() => {
+                deleteMessage(activeConversationId, contextMenu.messageId);
+                setContextMenu(null);
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 text-[13px] transition hover:bg-red-50"
+              style={{ color: "var(--accent)" }}
+            >
+              <Trash2 className="h-4 w-4" />
+              删除
+            </button>
+          </div>
+        </div>
+      )}
+
+      {tomatoPicker && (
+        <div
+          className="fixed inset-0 z-50"
+          onClick={(e) => { e.stopPropagation(); setTomatoPicker(null); }}
+        >
+          <div
+            className="absolute z-50 rounded-2xl border shadow-xl p-4"
+            style={{
+              left: Math.min(Math.max(tomatoPicker.x - 80, 10), window.innerWidth - 180),
+              top: Math.min(Math.max(tomatoPicker.y - 60, 10), window.innerHeight - 120),
+              background: "var(--card)",
+              borderColor: "var(--card-border)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-2 text-center text-[12px] font-medium" style={{ color: "var(--text)" }}>
+              选择扔几个番茄 🍅
+            </div>
+            <div className="flex gap-2">
+              {[1, 2, 3].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => handlePickTomato(n)}
+                  className="flex h-12 w-12 items-center justify-center rounded-xl text-lg font-bold transition hover:scale-110 active:scale-95"
+                  style={{
+                    background: n === 1 ? "#FF6B6B22" : n === 2 ? "#FF8E5322" : "#E91E6322",
+                    color: n === 1 ? "#FF6B6B" : n === 2 ? "#FF8E53" : "#E91E63",
+                    border: `1px solid ${n === 1 ? "#FF6B6B" : n === 2 ? "#FF8E53" : "#E91E63"}`,
+                  }}
+                >
+                  {n}🍅
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tomatoThrows.filter((t) => t.conversationId === activeConversationId).map((tomato) => (
+        <TomatoAnimation key={tomato.id} tomato={tomato} messages={messages} view={view} />
+      ))}
     </div>
   );
 }
+
+const tomatoImgUrl = "https://i.postimg.cc/ZKVRS4kH/retouch-2026071501420750.png";
 
 function MessageAvatar({
   senderId,
@@ -205,12 +479,24 @@ function MessageAvatar({
   avatarImage,
   size = "md",
   onPat,
+  onSwipeStart,
+  onSwipeMove,
+  onSwipeEnd,
+  onMouseDown: onAvatarMouseDown,
+  msgId,
+  tomatoCount,
 }: {
   senderId: string;
   avatarText: string;
   avatarImage: string;
   size?: "sm" | "md";
   onPat?: () => void;
+  onSwipeStart?: (senderId: string, msgId: string, clientX: number, clientY: number) => void;
+  onSwipeMove?: (clientX: number, clientY: number) => void;
+  onSwipeEnd?: () => void;
+  onMouseDown?: (senderId: string, msgId: string, clientX: number, clientY: number) => void;
+  msgId?: string;
+  tomatoCount?: number;
 }) {
   const [isPating, setIsPating] = useState(false);
   const dim = size === "sm" ? "h-[36px] w-[36px] text-[12px]" : "h-[36px] w-[36px] text-[12px]";
@@ -225,21 +511,41 @@ function MessageAvatar({
     }
   };
 
-  if (avatarImage) {
-    return (
-      <div
-        className={`shrink-0 overflow-hidden rounded-lg select-none cursor-pointer transition-transform active:scale-95 ${dim} ${isPating ? "animate-bounce" : ""}`}
-        style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.15)" }}
-        onDoubleClick={handleDoubleClick}
-        title="双击拍一拍"
-      >
-        <img src={avatarImage} alt="avatar" className="h-full w-full object-cover" />
-      </div>
-    );
-  }
+  const handleContextMenu = (_e: React.MouseEvent) => {
+  };
 
-  return (
+  const longPressTitle = "双击拍一拍";
+
+  const avatarEl = avatarImage ? (
     <div
+      data-avatar="true"
+      className={`shrink-0 overflow-hidden rounded-lg select-none cursor-pointer transition-transform active:scale-95 ${dim} ${isPating ? "animate-bounce" : ""}`}
+      style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.15)" }}
+      onDoubleClick={handleDoubleClick}
+      onContextMenu={handleContextMenu}
+      onTouchStart={(e) => {
+        if (e.touches.length === 1 && senderId !== "me") {
+          onSwipeStart?.(senderId, msgId || "", e.touches[0].clientX, e.touches[0].clientY);
+        }
+      }}
+      onTouchMove={(e) => {
+        if (e.touches.length === 1 && senderId !== "me") {
+          onSwipeMove?.(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      }}
+      onTouchEnd={onSwipeEnd}
+      onMouseDown={(e) => {
+        if (senderId !== "me") {
+          onAvatarMouseDown?.(senderId, msgId || "", e.clientX, e.clientY);
+        }
+      }}
+      title={longPressTitle}
+    >
+      <img src={avatarImage} alt="avatar" className="h-full w-full object-cover" />
+    </div>
+  ) : (
+    <div
+      data-avatar="true"
       className={`flex shrink-0 items-center justify-center rounded-lg font-stamp select-none cursor-pointer transition-transform active:scale-95 ${dim} ${isPating ? "animate-bounce" : ""}`}
       style={{
         background: bgVar,
@@ -247,24 +553,218 @@ function MessageAvatar({
         boxShadow: "0 1px 2px rgba(0,0,0,0.15)",
       }}
       onDoubleClick={handleDoubleClick}
-      title="双击拍一拍"
+      onContextMenu={handleContextMenu}
+      onTouchStart={(e) => {
+        if (e.touches.length === 1 && senderId !== "me") {
+          onSwipeStart?.(senderId, msgId || "", e.touches[0].clientX, e.touches[0].clientY);
+        }
+      }}
+      onTouchMove={(e) => {
+        if (e.touches.length === 1 && senderId !== "me") {
+          onSwipeMove?.(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      }}
+      onTouchEnd={onSwipeEnd}
+      onMouseDown={(e) => {
+        if (senderId !== "me") {
+          onAvatarMouseDown?.(senderId, msgId || "", e.clientX, e.clientY);
+        }
+      }}
+      title={longPressTitle}
     >
       {avatarText}
     </div>
   );
+
+  if (!tomatoCount || tomatoCount <= 0) return avatarEl;
+
+  const count = Math.min(tomatoCount, 10);
+  return (
+    <div className="relative flex items-center justify-center" style={{ height: "36px", width: "36px" }}>
+      {avatarEl}
+      {Array.from({ length: count }).map((_, i) => {
+        const bottomBase = 24;
+        const offsetPer = 6;
+        const bottomPx = bottomBase + i * offsetPer;
+        const jitter = i === 0 ? 0 : (i % 3 - 1) * 0.8;
+        const rotate = i === 0 ? 0 : (i % 3 - 1) * 1.5;
+        return (
+          <img
+            key={i}
+            src={tomatoImgUrl}
+            alt="tomato"
+            className="absolute h-3 w-3 object-contain"
+            style={{
+              bottom: `${bottomPx}px`,
+              left: `calc(50% + ${jitter}px)`,
+              transform: `translateX(-50%) rotate(${rotate}deg)`,
+              filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.25))",
+              zIndex: i,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
 }
 
-function SystemMessage({ message }: { message: Message }) {
+function TomatoAnimation({
+  tomato,
+  messages,
+  view,
+}: {
+  tomato: TomatoThrow;
+  messages: Message[];
+  view: ViewSide;
+}) {
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const animRef = useRef<number | null>(null);
+  const startedRef = useRef(false);
+
+  const getSide = useCallback((sender: string): "left" | "right" => {
+    if (view === "me") {
+      return sender === "me" ? "right" : "left";
+    } else {
+      return sender === "me" ? "left" : "right";
+    }
+  }, [view]);
+
+  const findAvatarByMsgId = useCallback((msgId: string): { x: number; y: number; width: number; height: number } | null => {
+    const msgEl = document.querySelector(`[data-msg-id="${msgId}"]`);
+    if (!msgEl) return null;
+
+    const avatarEl = msgEl.querySelector('[data-avatar="true"]') as HTMLElement | null;
+    if (!avatarEl) return null;
+
+    const rect = avatarEl.getBoundingClientRect();
+    const scrollContainer = document.querySelector(".chat-bg")?.getBoundingClientRect();
+    if (!scrollContainer) return null;
+
+    return {
+      x: rect.left - scrollContainer.left + rect.width / 2,
+      y: rect.top - scrollContainer.top,
+      width: rect.width,
+      height: rect.height,
+    };
+  }, [messages]);
+
+  const findLatestMessageAvatar = useCallback((senderId: string): { x: number; y: number; width: number; height: number } | null => {
+    const senderMessages = [...messages].reverse().filter((m) => m.sender === senderId && m.type !== "system" && !m.recalled);
+    for (const msg of senderMessages) {
+      const pos = findAvatarByMsgId(msg.id);
+      if (pos) return pos;
+    }
+    return null;
+  }, [messages, findAvatarByMsgId]);
+
+  useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+
+    // 延迟一帧等待 DOM 渲染完成，尤其是对面刚发消息就扔番茄的场景
+    const startAnim = () => {
+      const throwerPos = findLatestMessageAvatar(tomato.throwerId);
+
+      let targetPos: { x: number; y: number; width: number; height: number } | null = null;
+      if (tomato.targetMsgId) {
+        targetPos = findAvatarByMsgId(tomato.targetMsgId);
+      }
+      if (!targetPos) {
+        targetPos = findLatestMessageAvatar(tomato.targetId);
+      }
+
+      if (!throwerPos || !targetPos) {
+        setPos(null);
+        return;
+      }
+
+      const startX = throwerPos.x;
+      const startY = throwerPos.y - throwerPos.height * 0.25;
+      const endX = targetPos.x;
+      const endY = targetPos.y + targetPos.height * 0.25;
+
+      setPos({ x: startX, y: startY });
+
+      const duration = 600;
+      const startTime = performance.now();
+      const arcHeight = Math.max(60, Math.abs(endY - startY) * 0.8 + 40);
+
+      const animate = (now: number) => {
+        const elapsed = now - startTime;
+        const t = Math.min(elapsed / duration, 1);
+
+        const x = startX + (endX - startX) * t;
+        const y = startY + (endY - startY) * t - arcHeight * 4 * t * (1 - t);
+
+        setPos({ x, y });
+
+        if (t < 1) {
+          animRef.current = requestAnimationFrame(animate);
+        } else {
+          setPos(null);
+        }
+      };
+
+      animRef.current = requestAnimationFrame(animate);
+    };
+
+    const raf = requestAnimationFrame(startAnim);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      if (animRef.current) {
+        cancelAnimationFrame(animRef.current);
+      }
+    };
+  }, [tomato.id]);
+
+  const tomatoImg = "https://i.postimg.cc/ZKVRS4kH/retouch-2026071501420750.png";
+
+  if (!pos) return null;
+
+  return (
+    <div
+      className="pointer-events-none absolute left-0 top-0 z-30 h-full w-full"
+    >
+      <div
+        className="absolute"
+        style={{
+          left: `${pos.x - 6}px`,
+          top: `${pos.y - 12}px`,
+          width: "12px",
+          height: "12px",
+          transform: "scale(1)",
+          opacity: 1,
+          transition: "none",
+          filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.25))",
+          zIndex: 100,
+        }}
+      >
+        <img
+          src={tomatoImg}
+          alt="tomato"
+          className="h-full w-full object-contain"
+        />
+      </div>
+    </div>
+  );
+}
+
+function SystemMessage({ message, onToggleCollapse, collapsed }: { message: Message; onToggleCollapse?: () => void; collapsed?: boolean }) {
+  const isTomatoMsg = message.systemText?.includes("番茄") || message.systemText?.includes("扔了");
+  
   return (
     <div className="flex justify-center py-2">
       <span
-        className="px-3 py-1 text-xs rounded-full animate-bubbleIn"
+        className={`px-3 py-1 text-xs rounded-full animate-bubbleIn ${onToggleCollapse ? "cursor-pointer hover:opacity-80" : ""}`}
         style={{
           background: "color-mix(in srgb, var(--text) 8%, transparent)",
           color: "color-mix(in srgb, var(--text) 55%, transparent)",
         }}
+        onClick={onToggleCollapse}
       >
-        {message.systemText}
+        {isTomatoMsg && collapsed ? "🍅 番茄大战（点击展开/收起）" : message.systemText}
+        {isTomatoMsg && !collapsed && " 🍅"}
       </span>
     </div>
   );
@@ -285,23 +785,79 @@ function MessageBubble({
 }) {
   const isLeft = side === "left";
   const bgColor = isLeft ? "var(--her-card)" : "var(--my-bubble)";
+  const isCuteMoe = useAppStore((s) => s.beauty.themeId) === "cute-moe";
+  const songs = useAppStore((s) => s.songs);
+  const setMusicCurrentIndex = useAppStore((s) => s.setMusicCurrentIndex);
+  const setMusicPlaying = useAppStore((s) => s.setMusicPlaying);
+  const setMusicFullScreen = useAppStore((s) => s.setMusicFullScreen);
   const time = new Date(message.timestamp).toLocaleTimeString("zh-CN", {
     hour: "2-digit",
     minute: "2-digit",
   });
 
-  if (message.type === "sticker" && message.sticker) {
+  const handlePlayMusic = () => {
+    if (!message.music) return;
+    const idx = songs.findIndex((s) => s.title === message.music!.title && s.url === message.music!.url);
+    if (idx >= 0) {
+      setMusicCurrentIndex(idx);
+    }
+    setMusicPlaying(true);
+    setMusicFullScreen(true);
+  };
+
+  if (message.type === "image" && message.image) {
     return (
-      <>
+      <div className="flex flex-col items-start max-w-[70%]">
         <img
-          src={message.sticker}
-          alt="sticker"
-          className="max-h-32 max-w-[60%] animate-bubbleIn rounded-xl object-contain"
+          src={message.image}
+          alt="image"
+          className="animate-bubbleIn rounded-2xl border object-cover"
+          style={{
+            maxWidth: "100%",
+            maxHeight: "280px",
+            borderColor: "var(--card-border)",
+          }}
         />
         <span className="mt-1 px-1 text-[10px]" style={{ color: "color-mix(in srgb, var(--text) 50%, transparent)" }}>
           {time}
         </span>
-      </>
+      </div>
+    );
+  }
+
+  if (message.type === "sticker") {
+    return (
+      <div className={`flex flex-col ${isLeft ? "items-start" : "items-end"} max-w-[70%]`}>
+        {message.moodTag && (
+          <span
+            className="mb-1 ml-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px]"
+            style={{
+              background: "color-mix(in srgb, var(--accent) 15%, transparent)",
+              color: "var(--accent)",
+              border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
+            }}
+          >
+            💭 {message.moodTag}
+          </span>
+        )}
+        {message.sticker ? (
+          <img
+            src={message.sticker}
+            alt="sticker"
+            className="max-h-32 max-w-full animate-bubbleIn rounded-xl object-contain"
+          />
+        ) : (
+          <div
+            className="animate-bubbleIn rounded-xl px-4 py-2.5 text-[15px]"
+            style={{ background: bgColor, color: "var(--text-soft)" }}
+          >
+            [表情包]
+          </div>
+        )}
+        <span className="mt-1 px-1 text-[10px]" style={{ color: "color-mix(in srgb, var(--text) 50%, transparent)" }}>
+          {time}
+        </span>
+      </div>
     );
   }
 
@@ -309,7 +865,8 @@ function MessageBubble({
     return (
       <div className="flex flex-col items-start max-w-[75%]">
         <div
-          className="animate-bubbleIn rounded-2xl border p-3 w-full"
+          onClick={handlePlayMusic}
+          className="animate-bubbleIn cursor-pointer rounded-2xl border p-3 w-full transition hover:opacity-90 active:scale-[0.98]"
           style={{
             background: bgColor,
             borderColor: "color-mix(in srgb, var(--card-border) 50%, transparent)",
@@ -322,17 +879,17 @@ function MessageBubble({
           )}
           <div className="flex items-center gap-3">
             <div
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl"
-              style={{ background: "color-mix(in srgb, var(--accent) 20%, transparent)", color: "var(--accent)" }}
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl cute-music-btn"
+              style={{ background: isCuteMoe ? "transparent" : "color-mix(in srgb, var(--accent) 20%, transparent)", color: isCuteMoe ? "transparent" : "var(--accent)" }}
             >
-              <Music className="h-6 w-6" />
+              <Music className="h-6 w-6" style={{ opacity: isCuteMoe ? 0 : 1 }} />
             </div>
             <div className="flex-1 min-w-0">
               <div className="truncate text-sm font-medium" style={{ color: "var(--text)" }}>
                 {message.music.title}
               </div>
               <div className="mt-1 text-[11px]" style={{ color: "color-mix(in srgb, var(--text) 55%, transparent)" }}>
-                邀请你一起听
+                点击一起听
               </div>
             </div>
           </div>
@@ -346,14 +903,31 @@ function MessageBubble({
 
   return (
     <>
+      {message.quoteText && (
+        <div
+          className="animate-bubbleIn mb-1 rounded-lg border-l-2 px-2.5 py-1.5 text-[12px]"
+          style={{
+            background: "color-mix(in srgb, var(--accent) 8%, transparent)",
+            borderColor: "var(--accent)",
+            color: "var(--text-soft)",
+          }}
+        >
+          <div className="text-[10px] font-medium" style={{ color: "var(--accent)" }}>
+            {message.quoteSender === "me" ? "我" : "对方"}
+          </div>
+          <div className="truncate">{message.quoteText}</div>
+        </div>
+      )}
       <div className="relative animate-bubbleIn" style={{ maxWidth: "100%", minHeight: "36px" }}>
         <div
           style={{
             ...bubbleStyle,
             background: bgColor,
             color: "var(--text)",
+            overflowWrap: "anywhere",
+            wordBreak: "break-word",
           }}
-          className="px-3 py-[0.4em] text-[15px] leading-relaxed"
+          className={`px-3 py-[0.4em] text-[15px] leading-relaxed message-bubble ${isLeft ? "message-received" : "message-sent"}`}
         >
           {message.text && renderTextWithMention(message.text, message.mentionTarget)}
         </div>

@@ -23,6 +23,18 @@ export default function TextBubble({ message, side, showAvatar }: Props) {
       <div className={`flex items-center gap-2 ${isLeft ? "justify-start" : "justify-end"}`}>
         {isLeft && <div className="w-11 shrink-0">{showAvatar && <Avatar senderId={message.sender} />}</div>}
         <div className={`flex flex-col ${isLeft ? "items-start" : "items-end"}`}>
+          {message.moodTag && (
+            <span
+              className="mb-1 ml-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px]"
+              style={{
+                background: "color-mix(in srgb, var(--accent) 15%, transparent)",
+                color: "var(--accent)",
+                border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
+              }}
+            >
+              💭 {message.moodTag}
+            </span>
+          )}
           <img
             src={message.sticker}
             alt="sticker"
@@ -46,12 +58,26 @@ export default function TextBubble({ message, side, showAvatar }: Props) {
         <div className="flex w-11 shrink-0 justify-center">{showAvatar && <Avatar senderId={message.sender} />}</div>
       )}
       <div className={`flex flex-col ${isLeft ? "items-start" : "items-end"} max-w-[78%]`}>
+        {message.moodTag && (
+          <span
+            className="mb-1 ml-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px]"
+            style={{
+              background: "color-mix(in srgb, var(--accent) 15%, transparent)",
+              color: "var(--accent)",
+              border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
+            }}
+          >
+            💭 {message.moodTag}
+          </span>
+        )}
         <div className="relative animate-bubbleIn" style={{ maxWidth: "100%" }}>
           <div
             style={{
               ...bubbleStyle,
               background: bgColor,
               color: "var(--text)",
+              overflowWrap: "anywhere",
+              wordBreak: "break-word",
             }}
             className="px-4 py-2.5 text-[15px] leading-relaxed"
           >

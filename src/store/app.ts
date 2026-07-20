@@ -1,6 +1,8 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage } from "zustand/middleware";
 import { INITIAL_CARDS } from "@/data/initialCards";
+import { DEFAULT_NOTE_CARDS, DEFAULT_WHISPER_CARDS, DEFAULT_REPLY_CARDS } from "@/data/driftBottleCards";
+import { idbStorage } from "@/store/idbStorage";
 import type { Card, CardModule } from "@/types/card";
 import type {
   Message,
@@ -11,6 +13,8 @@ import type {
   Conversation,
   CallRecord,
   Memo,
+  DriftBottle,
+  TomatoThrow,
 } from "@/types";
 import type { BeautySettings, ChatSettings } from "@/types/settings";
 import {
@@ -61,10 +65,12 @@ interface MusicStore {
   musicPlaying: boolean;
   musicCurrentIndex: number;
   musicFloating: boolean;
+  musicFullScreen: boolean;
   musicSwitchNote: string | null;
   setMusicPlaying: (playing: boolean) => void;
   setMusicCurrentIndex: (index: number) => void;
   setMusicFloating: (floating: boolean) => void;
+  setMusicFullScreen: (open: boolean) => void;
   setMusicSwitchNote: (note: string | null) => void;
 }
 
@@ -81,14 +87,22 @@ interface ConversationStore {
   conversations: Conversation[];
   activeConversationId: string;
   groupConversationId: string;
+  quotingMessageId: string | null;
+  tomatoThrows: TomatoThrow[];
+  tomatoStats: Record<string, { thrownByMe: number; thrownAtMe: number }>;
   setActiveConversation: (id: string) => void;
   addPrivateConversation: (contactId: string) => string;
   addToGroup: (contactId: string) => void;
   renameGroup: (name: string) => void;
   send: (conversationId: string, text: string) => void;
   sendStickerInConv: (conversationId: string, image: string, senderId: string) => void;
+  sendImageInConv: (conversationId: string, image: string, senderId: string) => void;
   sendRPS: (conversationId: string, targetId: string, myChoice: "rock" | "paper" | "scissors") => void;
-  sendPoll: (conversationId: string, question: string, options: [string, string]) => void;
+  sendPoll: (conversationId: string, question: string, options: string[]) => void;
+  quoteMessage: (conversationId: string, messageId: string) => void;
+  recallMessage: (conversationId: string, messageId: string) => void;
+  deleteMessage: (conversationId: string, messageId: string) => void;
+  clearMessages: (conversationId: string) => void;
   toggleView: (conversationId: string) => void;
   setPhoneOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
@@ -97,6 +111,9 @@ interface ConversationStore {
   dismissMealAlert: () => void;
   pat: (conversationId: string, contactId: string) => void;
   setConversationAvatar: (conversationId: string, side: "my" | "her", text?: string, image?: string) => void;
+  throwTomato: (conversationId: string, throwerId: string, targetId: string, targetMsgId?: string, auto?: boolean, count?: number) => void;
+  removeTomatoThrow: (tomatoId: string) => void;
+  sendGroupListenTogether: (conversationId: string, songIndex?: number) => void;
 }
 
 interface GlobalState {
@@ -109,9 +126,37 @@ interface GlobalState {
   setActiveCardLibContactId: (id: string | null) => void;
   callRecords: CallRecord[];
   memos: Memo[];
+  driftBottles: DriftBottle[];
+  // 漂流瓶应用独立字卡库
+  bottleNoteCards: { id: string; content: string }[];
+  bottleWhisperCards: { id: string; content: string }[];
+  bottleReplyCards: { id: string; content: string }[];
+  // 漂流瓶日记
+  bottleDiary: { id: string; type: "star" | "ocean" | "letter"; content: string; reply?: string; timestamp: number }[];
+  // 漂流瓶已发送的信
+  bottleLetters: { id: string; content: string; font: string; fontSize: number; timestamp: number; receivedAt?: number; replyAt?: number; reply?: string }[];
+  // 漂流瓶星星领取记录（按日期）
+  bottleStarPicks: Record<string, { morning: boolean; noon: boolean; evening: boolean }>;
+  lastAutoMemoAt: number;
+  lastAutoMailboxAt: number;
+  lastAutoDriftBottleAt: number;
   startCall: (contactId: string) => void;
   addMemo: (contactId: string, text: string) => void;
+  addDriftBottle: (contactId: string, text: string) => void;
   openMailbox: (contactId: string) => void;
+  markDriftBottleRead: (id: string) => void;
+  // 漂流瓶字卡库操作
+  addBottleNoteCards: (cards: string[]) => void;
+  deleteBottleNoteCard: (id: string) => void;
+  addBottleWhisperCards: (cards: string[]) => void;
+  deleteBottleWhisperCard: (id: string) => void;
+  addBottleReplyCards: (cards: string[]) => void;
+  deleteBottleReplyCard: (id: string) => void;
+  // 漂流瓶拾取/写信
+  pickBottleStar: (content: string) => void;
+  pickBottleOcean: (content: string) => void;
+  replyBottleOcean: (id: string, reply: string) => void;
+  sendBottleLetter: (content: string, font: string, fontSize: number) => void;
   showMemoBar: boolean;
   toggleMemoBar: () => void;
   incomingCall: { contactId: string; contactName: string; contactAvatar: string } | null;
@@ -156,6 +201,15 @@ function randRange(min: number, max: number) {
   return min + Math.random() * (max - min);
 }
 
+function getTodayKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function getTomatoStatKey(contactId: string, date: string): string {
+  return `${contactId}:${date}`;
+}
+
 function createDefaultStatus(): HerStatus {
   return {
     body: {
@@ -177,6 +231,7 @@ function createDefaultStatus(): HerStatus {
     work: {
       status: "working",
       content: "写周报",
+      location: "公司办公室",
       tasks: [
         { id: "w1", title: "周报整理", done: false },
         { id: "w2", title: "客户邮件回复 ×3", done: true },
@@ -340,7 +395,17 @@ export const useAppStore = create<
       setActiveCardLibContactId: (id) => set({ activeCardLibContactId: id }),
       callRecords: [],
       memos: [],
+      driftBottles: [],
+      bottleNoteCards: DEFAULT_NOTE_CARDS,
+      bottleWhisperCards: DEFAULT_WHISPER_CARDS,
+      bottleReplyCards: DEFAULT_REPLY_CARDS,
+      bottleDiary: [],
+      bottleLetters: [],
+      bottleStarPicks: {},
       showMemoBar: false,
+      lastAutoMemoAt: 0,
+      lastAutoMailboxAt: 0,
+      lastAutoDriftBottleAt: 0,
       toggleMemoBar: () => set((s) => ({ showMemoBar: !s.showMemoBar })),
       incomingCall: null,
       floatingPhone: false,
@@ -507,10 +572,31 @@ export const useAppStore = create<
         set((s) => ({
           memos: [memo, ...s.memos].slice(0, 500),
         }));
+      },
 
-        // 备忘录回复：每1-3小时回复一次，从上一次回复时间开始计算
-        const scheduleNextMemoReply = () => {
-          const hours = Math.random() * 2 + 1;
+      openMailbox: (contactId) => {
+        // 打开信箱只显示已有信件，不自动生成新信
+        // 信件由后台定时任务 setupMailboxSend 自动生成
+      },
+
+      addDriftBottle: (contactId, text) => {
+        const trimmed = text.trim();
+        if (!trimmed) return;
+        const bottle: DriftBottle = {
+          id: uid("drift"),
+          contactId,
+          text: trimmed,
+          from: "me",
+          timestamp: Date.now(),
+          isRead: true,
+        };
+        set((s) => ({
+          driftBottles: [bottle, ...s.driftBottles].slice(0, 500),
+        }));
+
+        // 漂流瓶回复：对方回复漂流瓶
+        const scheduleNextReply = () => {
+          const delay = Math.random() * 3000 + 2000;
           window.setTimeout(() => {
             const state = useAppStore.getState();
             const contact = state.contacts.find((c) => c.id === contactId);
@@ -526,67 +612,134 @@ export const useAppStore = create<
               ...contact.cards.lunch,
               ...contact.cards.dinner,
             ];
-            if (allCards.length === 0) { scheduleNextMemoReply(); return; }
-            const count = Math.floor(Math.random() * 3) + 3;
-            const cardContents: string[] = [];
-            for (let i = 0; i < count; i++) {
-              const card = allCards[Math.floor(Math.random() * allCards.length)];
-              cardContents.push(card.content);
-            }
-            const mergedText = cardContents.join("\n\n");
+            if (allCards.length === 0) return;
+            const card = allCards[Math.floor(Math.random() * allCards.length)];
             useAppStore.setState((s) => ({
-              memos: [{
-                id: uid("reply"),
+              driftBottles: [{
+                id: uid("drift-reply"),
                 contactId,
-                text: mergedText,
+                text: card.content,
                 from: contactId,
                 timestamp: Date.now(),
-              }, ...s.memos].slice(0, 500),
+                isRead: false,
+              }, ...s.driftBottles].slice(0, 500),
             }));
-            scheduleNextMemoReply();
-          }, hours * 60 * 60 * 1000);
+          }, delay);
         };
-        scheduleNextMemoReply();
+        scheduleNextReply();
       },
 
-      openMailbox: (contactId) => {
-        const state = get();
-        const contact = state.contacts.find((c) => c.id === contactId);
-        if (!contact) return;
-        const allCards: Card[] = [
-          ...contact.cards.chat,
-          ...contact.cards.body,
-          ...contact.cards.mood,
-          ...contact.cards.workContent,
-          ...contact.cards.workStatus,
-          ...contact.cards.travel,
-          ...contact.cards.breakfast,
-          ...contact.cards.lunch,
-          ...contact.cards.dinner,
-        ];
-        const stickers = state.stickers;
-        const replyCount = Math.floor(Math.random() * 5) + 8;
-        const cardContents: string[] = [];
-        for (let i = 0; i < replyCount; i++) {
-          const useSticker = stickers.length > 0 && Math.random() < 0.2;
-          if (useSticker) {
-            cardContents.push("[表情包]");
-          } else if (allCards.length > 0) {
-            const card = allCards[Math.floor(Math.random() * allCards.length)];
-            cardContents.push(card.content);
-          }
-        }
-        const mergedText = cardContents.join("\n\n");
-        const memo: Memo = {
-          id: uid("mbox"),
-          contactId,
-          text: mergedText,
-          from: contactId,
-          timestamp: Date.now(),
-        };
+      markDriftBottleRead: (id) => {
         set((s) => ({
-          memos: [memo, ...s.memos].slice(0, 500),
+          driftBottles: s.driftBottles.map((b) =>
+            b.id === id ? { ...b, isRead: true } : b
+          ),
         }));
+      },
+
+      // =========== 漂流瓶应用字卡库 ===========
+      addBottleNoteCards: (cards) =>
+        set((s) => {
+          const existing = new Set(s.bottleNoteCards.map((c) => c.content.trim()));
+          const toAdd = cards
+            .map((c) => c.trim())
+            .filter((c) => c && !existing.has(c) && !existing.add(c))
+            .map((c) => ({ id: uid("bn"), content: c }));
+          return { bottleNoteCards: [...s.bottleNoteCards, ...toAdd] };
+        }),
+      deleteBottleNoteCard: (id) =>
+        set((s) => ({ bottleNoteCards: s.bottleNoteCards.filter((c) => c.id !== id) })),
+      addBottleWhisperCards: (cards) =>
+        set((s) => {
+          const existing = new Set(s.bottleWhisperCards.map((c) => c.content.trim()));
+          const toAdd = cards
+            .map((c) => c.trim())
+            .filter((c) => c && !existing.has(c) && !existing.add(c))
+            .map((c) => ({ id: uid("bw"), content: c }));
+          return { bottleWhisperCards: [...s.bottleWhisperCards, ...toAdd] };
+        }),
+      deleteBottleWhisperCard: (id) =>
+        set((s) => ({ bottleWhisperCards: s.bottleWhisperCards.filter((c) => c.id !== id) })),
+      addBottleReplyCards: (cards) =>
+        set((s) => {
+          const existing = new Set(s.bottleReplyCards.map((c) => c.content.trim()));
+          const toAdd = cards
+            .map((c) => c.trim())
+            .filter((c) => c && !existing.has(c) && !existing.add(c))
+            .map((c) => ({ id: uid("br"), content: c }));
+          return { bottleReplyCards: [...s.bottleReplyCards, ...toAdd] };
+        }),
+      deleteBottleReplyCard: (id) =>
+        set((s) => ({ bottleReplyCards: s.bottleReplyCards.filter((c) => c.id !== id) })),
+
+      // =========== 漂流瓶拾取/写信 ===========
+      pickBottleStar: (content) =>
+        set((s) => ({
+          bottleDiary: [
+            { id: uid("dstar"), type: "star" as const, content, timestamp: Date.now() },
+            ...s.bottleDiary,
+          ],
+        })),
+      pickBottleOcean: (content) =>
+        set((s) => ({
+          bottleDiary: [
+            { id: uid("docean"), type: "ocean" as const, content, timestamp: Date.now() },
+            ...s.bottleDiary,
+          ],
+        })),
+      replyBottleOcean: (id, reply) =>
+        set((s) => ({
+          bottleDiary: s.bottleDiary.map((d) =>
+            d.id === id ? { ...d, reply } : d
+          ),
+        })),
+      sendBottleLetter: (content, font, fontSize) => {
+        const letterId = uid("bletter");
+        const now = Date.now();
+        set((s) => ({
+          bottleLetters: [
+            ...s.bottleLetters,
+            { id: letterId, content, font, fontSize, timestamp: now },
+          ],
+          bottleDiary: [
+            { id: uid("dletter"), type: "letter" as const, content, timestamp: now },
+            ...s.bottleDiary,
+          ],
+        }));
+
+        // 30分钟到1小时后，对方收到漂流瓶
+        const receiveDelay = randRange(30 * 60 * 1000, 60 * 60 * 1000);
+        window.setTimeout(() => {
+          set((s) => ({
+            bottleLetters: s.bottleLetters.map((l) =>
+              l.id === letterId ? { ...l, receivedAt: Date.now() } : l
+            ),
+          }));
+
+          // 2-3小时后抽取回信字卡回复
+          const replyDelay = randRange(2 * 60 * 60 * 1000, 3 * 60 * 60 * 1000);
+          window.setTimeout(() => {
+            const st = get();
+            const replyCards = st.bottleReplyCards;
+            if (replyCards.length === 0) return;
+            const replyCount = Math.floor(Math.random() * 4) + 3; // 3-6条
+            const shuffled = [...replyCards].sort(() => Math.random() - 0.5);
+            const selected = shuffled.slice(0, Math.min(replyCount, shuffled.length));
+            const replyText = selected.map((c) => c.content).join("\n\n---\n\n");
+            set((s) => ({
+              bottleLetters: s.bottleLetters.map((l) =>
+                l.id === letterId
+                  ? { ...l, replyAt: Date.now(), reply: replyText }
+                  : l
+              ),
+              bottleDiary: s.bottleDiary.map((d) =>
+                d.type === "letter" && d.content === content && !d.reply
+                  ? { ...d, reply: replyText }
+                  : d
+              ),
+            }));
+          }, replyDelay);
+        }, receiveDelay);
       },
 
       // =========== 字卡库 ===========
@@ -753,11 +906,20 @@ export const useAppStore = create<
       exportCards: (contactId) => {
         const contact = get().contacts.find((c) => c.id === contactId);
         if (!contact) return "{}";
+        const simplifiedCards: Partial<Record<CardModule, { content: string; group?: string }[]>> = {};
+        const modules = ["chat", "mood", "body", "workStatus", "workContent", "workLocation", "travel", "breakfast", "lunch", "dinner"] as const;
+        for (const m of modules) {
+          const list = contact.cards[m];
+          if (list && list.length > 0) {
+            simplifiedCards[m] = list.map((c) => ({
+              content: c.content || c.name || "",
+              ...(m === "chat" && c.group ? { group: c.group } : {}),
+            }));
+          }
+        }
         const data = {
-          version: 1,
           cardGroups: get().cardGroups,
-          cards: contact.cards,
-          exportedAt: new Date().toISOString(),
+          cards: simplifiedCards,
         };
         return JSON.stringify(data, null, 2);
       },
@@ -765,36 +927,103 @@ export const useAppStore = create<
       importCards: (contactId, jsonStr) => {
         try {
           const data = JSON.parse(jsonStr);
-          if (!data.cards || typeof data.cards !== "object") {
-            return { success: false, message: "格式不正确：缺少 cards 字段" };
-          }
-          const modules = ["chat", "mood", "body", "workStatus", "workContent", "travel", "breakfast", "lunch", "dinner"] as const;
           const newCards: Partial<Record<CardModule, Card[]>> = {};
-          for (const m of modules) {
-            if (Array.isArray(data.cards[m])) {
-              newCards[m] = data.cards[m].map((c: any, i: number) => ({
-                id: c.id || `${m}-imp-${i}-${Date.now()}`,
-                name: String(c.name || c.content || "未命名"),
-                content: String(c.content || c.name || ""),
-                stamp: String(c.stamp || (c.name || "卡").charAt(0)),
-                mood: c.mood || undefined,
-                group: c.group || "日常",
-              }));
+          const newGroups: string[] = [];
+
+          if (Array.isArray(data.groups)) {
+            for (const group of data.groups) {
+              const groupName = group.name || "未命名分组";
+              newGroups.push(groupName);
+              if (Array.isArray(group.items)) {
+                const cards = group.items.map((text: string, i: number) => ({
+                  id: `chat-imp-${groupName}-${i}-${Date.now()}`,
+                  name: String(text || ""),
+                  content: String(text || ""),
+                  group: groupName,
+                }));
+                newCards.chat = [...(newCards.chat || []), ...cards];
+              }
             }
           }
-          if (data.cardGroups && Array.isArray(data.cardGroups)) {
-            set((s) => ({
-              cardGroups: [...new Set([...s.cardGroups, ...data.cardGroups])],
+
+          if (Array.isArray(data.customReplies)) {
+            const cards = data.customReplies.map((text: string, i: number) => ({
+              id: `chat-imp-${i}-${Date.now()}`,
+              name: String(text || ""),
+              content: String(text || ""),
+              group: "日常",
             }));
+            newCards.chat = [...(newCards.chat || []), ...cards];
           }
-          set((s) => ({
-            contacts: s.contacts.map((c) =>
-              c.id === contactId
-                ? { ...c, cards: { ...c.cards, ...newCards } as Record<CardModule, Card[]> }
-                : c
-            ),
-          }));
-          return { success: true, message: "导入成功" };
+
+          if (data.cards && typeof data.cards === "object") {
+            const modules = ["chat", "mood", "body", "workStatus", "workContent", "workLocation", "travel", "breakfast", "lunch", "dinner"] as const;
+            for (const m of modules) {
+              if (Array.isArray(data.cards[m])) {
+                const existing = newCards[m] || [];
+                const imported = data.cards[m].map((c: any, i: number) => {
+                  const content = String(c.content || c.name || "");
+                  return {
+                    id: `${m}-imp-${i}-${Date.now()}`,
+                    name: content || "未命名",
+                    content,
+                    group: m === "chat" ? (c.group || "日常") : undefined,
+                  };
+                });
+                newCards[m] = [...existing, ...imported];
+              }
+            }
+          }
+
+          if (!newCards.chat && !newCards.mood && !newCards.body) {
+            return { success: false, message: "格式不正确：未找到可导入的字卡" };
+          }
+
+          const allNewGroups = [...newGroups, ...(Array.isArray(data.cardGroups) ? data.cardGroups : [])];
+          let addedCount = 0;
+          let dupCount = 0;
+
+          set((s) => {
+            const contact = s.contacts.find((c) => c.id === contactId);
+            if (!contact) return {};
+
+            const updatedGroups = [...new Set([...s.cardGroups, ...allNewGroups])];
+            const mergedCards = { ...contact.cards } as Record<CardModule, Card[]>;
+
+            const modules = Object.keys(newCards) as CardModule[];
+            for (const m of modules) {
+              const existing = mergedCards[m] || [];
+              const existingKeys = new Set(
+                existing.map((c) => `${(c.name || "").trim()}|${(c.content || "").trim()}`)
+              );
+              const toAdd: Card[] = [];
+              for (const c of newCards[m] || []) {
+                const key = `${(c.name || "").trim()}|${(c.content || "").trim()}`;
+                if (existingKeys.has(key)) {
+                  dupCount++;
+                  continue;
+                }
+                existingKeys.add(key);
+                toAdd.push(c);
+                addedCount++;
+              }
+              mergedCards[m] = [...existing, ...toAdd];
+            }
+
+            return {
+              cardGroups: updatedGroups,
+              contacts: s.contacts.map((c) =>
+                c.id === contactId
+                  ? { ...c, cards: mergedCards }
+                  : c
+              ),
+            };
+          });
+
+          return {
+            success: true,
+            message: `导入成功：新增 ${addedCount} 张，跳过重复 ${dupCount} 张，${allNewGroups.length} 个分组`,
+          };
         } catch (e) {
           return { success: false, message: "JSON 解析失败" };
         }
@@ -835,11 +1064,13 @@ export const useAppStore = create<
       musicPlaying: false,
       musicCurrentIndex: 0,
       musicFloating: false,
+      musicFullScreen: false,
       musicSwitchNote: null,
 
       setMusicPlaying: (playing) => set({ musicPlaying: playing }),
       setMusicCurrentIndex: (index) => set({ musicCurrentIndex: index }),
       setMusicFloating: (floating) => set({ musicFloating: floating }),
+      setMusicFullScreen: (open) => set({ musicFullScreen: open }),
       setMusicSwitchNote: (note) => set({ musicSwitchNote: note }),
 
       // =========== 联系人 ===========
@@ -880,8 +1111,11 @@ export const useAppStore = create<
       conversations: [],
       activeConversationId: "",
       groupConversationId: "",
+      quotingMessageId: null,
+      tomatoThrows: [],
+      tomatoStats: {},
 
-      setActiveConversation: (id) => set({ activeConversationId: id }),
+      setActiveConversation: (id) => set({ activeConversationId: id, quotingMessageId: null }),
 
       addPrivateConversation: (contactId) => {
         const contact = get().contacts.find((c) => c.id === contactId);
@@ -1002,15 +1236,30 @@ export const useAppStore = create<
         const conv = get().conversations.find((c) => c.id === conversationId);
         if (!conv) return;
 
+        const quoteId = get().quotingMessageId;
+        let quoteText: string | undefined;
+        let quoteSender: string | undefined;
+        if (quoteId) {
+          const quotedMsg = conv.messages.find((m) => m.id === quoteId);
+          if (quotedMsg) {
+            quoteText = quotedMsg.text || (quotedMsg.sticker ? "[表情包]" : quotedMsg.image ? "[图片]" : "");
+            quoteSender = quotedMsg.sender;
+          }
+        }
+
         const myMsg: Message = {
           id: uid("me"),
           sender: "me",
           type: "text",
           text: trimmed,
           timestamp: Date.now(),
+          quoteId: quoteId || undefined,
+          quoteText,
+          quoteSender,
         };
 
         set((s) => ({
+          quotingMessageId: null,
           conversations: s.conversations.map((c) =>
             c.id === conversationId
               ? { ...c, messages: [...c.messages, myMsg] }
@@ -1098,14 +1347,54 @@ export const useAppStore = create<
                 return;
               }
 
-              const herMsg: Message = {
-                id: uid("her"),
-                sender: contactId,
-                type: "text",
-                text: card.content,
-                card,
-                timestamp: Date.now(),
-              };
+              const stickers = state.stickers;
+              const useSticker = stickers.length > 0 && Math.random() < 0.1;
+
+              const moodTag = Math.random() < 0.09 ? state.pickRandomCard(contactId, "mood")?.content : undefined;
+
+              // 对方随机引用（5%概率）
+              let quoteId: string | undefined;
+              let quoteText: string | undefined;
+              let quoteSender: string | undefined;
+              if (Math.random() < 0.05) {
+                const currentConv = state.conversations.find((c) => c.id === conversationId);
+                const recentMsgs = (currentConv?.messages || []).filter((m) => !m.recalled && m.type !== "system").slice(-20);
+                if (recentMsgs.length > 0) {
+                  const quotedMsg = recentMsgs[Math.floor(Math.random() * recentMsgs.length)];
+                  quoteId = quotedMsg.id;
+                  quoteText = quotedMsg.text || (quotedMsg.sticker ? "[表情包]" : quotedMsg.image ? "[图片]" : "");
+                  quoteSender = quotedMsg.sender;
+                }
+              }
+
+              let herMsg: Message;
+              if (useSticker) {
+                const sticker = stickers[Math.floor(Math.random() * stickers.length)];
+                herMsg = {
+                  id: uid("her"),
+                  sender: contactId,
+                  type: "sticker",
+                  sticker: sticker.image,
+                  moodTag,
+                  timestamp: Date.now(),
+                  quoteId,
+                  quoteText,
+                  quoteSender,
+                };
+              } else {
+                herMsg = {
+                  id: uid("her"),
+                  sender: contactId,
+                  type: "text",
+                  text: card.content,
+                  card,
+                  moodTag,
+                  timestamp: Date.now(),
+                  quoteId,
+                  quoteText,
+                  quoteSender,
+                };
+              }
 
               set((s) => {
                 const newStatus = bumpHerStatus(
@@ -1123,6 +1412,26 @@ export const useAppStore = create<
                   ),
                 };
               });
+
+              // 对方随机撤回（3%概率，撤回刚发的消息）
+              if (Math.random() < 0.03) {
+                const recallDelay = randRange(1500, 4000);
+                const herMsgId = herMsg.id;
+                window.setTimeout(() => {
+                  set((s) => ({
+                    conversations: s.conversations.map((c) =>
+                      c.id === conversationId
+                        ? {
+                            ...c,
+                            messages: c.messages.map((m) =>
+                              m.id === herMsgId ? { ...m, recalled: true } : m
+                            ),
+                          }
+                        : c
+                    ),
+                  }));
+                }, recallDelay);
+              }
 
               if (document.hidden && "Notification" in window && Notification.permission === "granted") {
                 const contact = get().contacts.find((c) => c.id === contactId);
@@ -1161,32 +1470,51 @@ export const useAppStore = create<
                 return;
               }
 
-              let textContent = card.content;
-              let mentionTarget: string | undefined;
-              if (Math.random() < 0.04) {
-                if (Math.random() < 0.8) {
-                  mentionTarget = "me";
-                  textContent = `@${myName} ${card.content}`;
-                } else {
-                  const others = memberIds.filter((id) => id !== speakerId);
-                  if (others.length > 0) {
-                    const targetId = others[Math.floor(Math.random() * others.length)];
-                    const targetContact = state.contacts.find((c) => c.id === targetId);
-                    mentionTarget = targetId;
-                    textContent = `@${targetContact?.name || "某人"} ${card.content}`;
+              const stickers = state.stickers;
+              const useSticker = stickers.length > 0 && Math.random() < 0.1;
+
+              const moodTag = Math.random() < 0.09 ? state.pickRandomCard(speakerId, "mood")?.content : undefined;
+
+              let msg: Message;
+              if (useSticker) {
+                const sticker = stickers[Math.floor(Math.random() * stickers.length)];
+                msg = {
+                  id: uid("grp"),
+                  sender: speakerId,
+                  type: "sticker",
+                  sticker: sticker.image,
+                  moodTag,
+                  timestamp: Date.now(),
+                };
+              } else {
+                let textContent = card.content;
+                let mentionTarget: string | undefined;
+                if (Math.random() < 0.04) {
+                  if (Math.random() < 0.8) {
+                    mentionTarget = "me";
+                    textContent = `@${myName} ${card.content}`;
+                  } else {
+                    const others = memberIds.filter((id) => id !== speakerId);
+                    if (others.length > 0) {
+                      const targetId = others[Math.floor(Math.random() * others.length)];
+                      const targetContact = state.contacts.find((c) => c.id === targetId);
+                      mentionTarget = targetId;
+                      textContent = `@${targetContact?.name || "某人"} ${card.content}`;
+                    }
                   }
                 }
-              }
 
-              const msg: Message = {
-                id: uid("grp"),
-                sender: speakerId,
-                type: "text",
-                text: textContent,
-                card,
-                mentionTarget,
-                timestamp: Date.now(),
-              };
+                msg = {
+                  id: uid("grp"),
+                  sender: speakerId,
+                  type: "text",
+                  text: textContent,
+                  card,
+                  mentionTarget,
+                  moodTag,
+                  timestamp: Date.now(),
+                };
+              }
 
               set((s) => ({
                 conversations: s.conversations.map((c) =>
@@ -1195,6 +1523,21 @@ export const useAppStore = create<
                     : c
                 ),
               }));
+
+              // 6%概率随机扔番茄给全员（包括自己）
+              if (Math.random() < 0.06) {
+                const allMembers = ["me", ...memberIds];
+                const randomTarget = allMembers[Math.floor(Math.random() * allMembers.length)];
+                const throwTomatoDelay = randRange(500, 1500);
+                window.setTimeout(() => {
+                  const curState = get();
+                  const throwFn = curState.throwTomato;
+                  if (throwFn) {
+                    throwFn(conversationId, speakerId, randomTarget, undefined, true);
+                  }
+                }, throwTomatoDelay);
+              }
+
               sendNextReply(index + 1);
             }, delay);
           };
@@ -1211,6 +1554,125 @@ export const useAppStore = create<
           sender: senderId,
           type: "sticker",
           sticker: image,
+          timestamp: Date.now(),
+        };
+        set((s) => ({
+          conversations: s.conversations.map((c) =>
+            c.id === conversationId ? { ...c, messages: [...c.messages, msg] } : c
+          ),
+        }));
+
+        if (senderId === "me") {
+          const { replySpeedMin, replySpeedMax } = get().chat;
+          const contactId = conv.memberIds[0];
+          const contact = get().contacts.find((c) => c.id === contactId);
+
+          if (conv.type === "private" && contact) {
+            const delay = randRange(replySpeedMin * 1000, replySpeedMax * 1000);
+            window.setTimeout(() => {
+              const state = get();
+              const card = state.pickRandomCard(contactId, "chat");
+              if (!card) return;
+
+              const stickers = state.stickers;
+              const useSticker = stickers.length > 0 && Math.random() < 0.1;
+
+              const moodTag = Math.random() < 0.09 ? state.pickRandomCard(contactId, "mood")?.content : undefined;
+
+              let herMsg: Message;
+              if (useSticker) {
+                const sticker = stickers[Math.floor(Math.random() * stickers.length)];
+                herMsg = {
+                  id: uid("her"),
+                  sender: contactId,
+                  type: "sticker",
+                  sticker: sticker.image,
+                  moodTag,
+                  timestamp: Date.now(),
+                };
+              } else {
+                herMsg = {
+                  id: uid("her"),
+                  sender: contactId,
+                  type: "text",
+                  text: card.content,
+                  card,
+                  moodTag,
+                  timestamp: Date.now(),
+                };
+              }
+
+              set((s) => ({
+                conversations: s.conversations.map((c) =>
+                  c.id === conversationId
+                    ? { ...c, messages: [...c.messages, herMsg] }
+                    : c
+                ),
+              }));
+            }, delay);
+          } else if (conv.type === "group") {
+            const replyCount = Math.floor(Math.random() * 4) + 2;
+            const sendNext = (index: number) => {
+              if (index >= replyCount) return;
+              const delay = randRange(replySpeedMin * 1000, replySpeedMax * 1000);
+              window.setTimeout(() => {
+                const state = get();
+                const members = state.contacts.filter((c) => conv.memberIds.includes(c.id));
+                const randomMember = members[Math.floor(Math.random() * members.length)];
+                const card = state.pickRandomCard(randomMember.id, "chat");
+                if (!card) { sendNext(index + 1); return; }
+
+                const stickers = state.stickers;
+                const useSticker = stickers.length > 0 && Math.random() < 0.1;
+
+                const moodTag = Math.random() < 0.09 ? state.pickRandomCard(randomMember.id, "mood")?.content : undefined;
+
+                let herMsg: Message;
+                if (useSticker) {
+                  const sticker = stickers[Math.floor(Math.random() * stickers.length)];
+                  herMsg = {
+                    id: uid("her"),
+                    sender: randomMember.id,
+                    type: "sticker",
+                    sticker: sticker.image,
+                    moodTag,
+                    timestamp: Date.now(),
+                  };
+                } else {
+                  herMsg = {
+                    id: uid("her"),
+                    sender: randomMember.id,
+                    type: "text",
+                    text: card.content,
+                    card,
+                    moodTag,
+                    timestamp: Date.now(),
+                  };
+                }
+
+                set((s) => ({
+                  conversations: s.conversations.map((c) =>
+                    c.id === conversationId
+                      ? { ...c, messages: [...c.messages, herMsg] }
+                      : c
+                  ),
+                }));
+                sendNext(index + 1);
+              }, delay);
+            };
+            sendNext(0);
+          }
+        }
+      },
+
+      sendImageInConv: (conversationId, image, senderId) => {
+        const conv = get().conversations.find((c) => c.id === conversationId);
+        if (!conv) return;
+        const msg: Message = {
+          id: uid("img"),
+          sender: senderId,
+          type: "image",
+          image,
           timestamp: Date.now(),
         };
         set((s) => ({
@@ -1258,7 +1720,7 @@ export const useAppStore = create<
                 const members = state.contacts.filter((c) => conv.memberIds.includes(c.id));
                 const randomMember = members[Math.floor(Math.random() * members.length)];
                 const card = state.pickRandomCard(randomMember.id, "chat");
-                if (!card) { sendNext(index + 1); return; }
+                if (!card) return;
 
                 const herMsg: Message = {
                   id: uid("her"),
@@ -1282,6 +1744,255 @@ export const useAppStore = create<
             sendNext(0);
           }
         }
+      },
+
+      quoteMessage: (conversationId, messageId) => {
+        set((s) => ({
+          quotingMessageId: messageId,
+        }));
+      },
+
+      recallMessage: (conversationId, messageId) => {
+        set((s) => ({
+          conversations: s.conversations.map((c) =>
+            c.id === conversationId
+              ? {
+                  ...c,
+                  messages: c.messages.map((m) =>
+                    m.id === messageId ? { ...m, recalled: true } : m
+                  ),
+                }
+              : c
+          ),
+        }));
+      },
+
+      deleteMessage: (conversationId, messageId) => {
+        set((s) => ({
+          conversations: s.conversations.map((c) =>
+            c.id === conversationId
+              ? { ...c, messages: c.messages.filter((m) => m.id !== messageId) }
+              : c
+          ),
+        }));
+      },
+
+      clearMessages: (conversationId) => {
+        set((s) => ({
+          conversations: s.conversations.map((c) =>
+            c.id === conversationId
+              ? { ...c, messages: [] }
+              : c
+          ),
+        }));
+      },
+
+      throwTomato: (conversationId, throwerId, targetId, targetMsgId, auto = false, count = 1) => {
+        const state = get();
+        const conv = state.conversations.find((c) => c.id === conversationId);
+        if (!conv) return;
+
+        const throwerName = throwerId === "me" ? state.beauty.myName : state.contacts.find((c) => c.id === throwerId)?.name || "某人";
+        const targetName = targetId === "me" ? state.beauty.myName : state.contacts.find((c) => c.id === targetId)?.name || "某人";
+
+        let resolvedTargetMsgId = targetMsgId || "";
+        if (!resolvedTargetMsgId && targetId) {
+          const targetMsgs = conv.messages.filter((m) => m.sender === targetId && m.type !== "system" && !m.recalled);
+          if (targetMsgs.length > 0) {
+            resolvedTargetMsgId = targetMsgs[targetMsgs.length - 1].id;
+          }
+        }
+
+        const tomatoCount = Math.max(1, Math.min(3, count));
+        const tomatoThrowsToAdd: TomatoThrow[] = [];
+        const tomatoIds: string[] = [];
+
+        for (let i = 0; i < tomatoCount; i++) {
+          const tomatoId = uid("tomato");
+          tomatoIds.push(tomatoId);
+          tomatoThrowsToAdd.push({
+            id: tomatoId,
+            throwerId,
+            targetId,
+            targetMsgId: resolvedTargetMsgId,
+            timestamp: Date.now() + i * 200,
+            conversationId,
+            auto,
+          });
+        }
+
+        const sysMsg: Message = {
+          id: uid("sys"),
+          sender: "system",
+          type: "system",
+          systemText: tomatoCount > 1
+            ? `${throwerName}很生气，所以向${targetName}扔了${tomatoCount}个番茄`
+            : `${throwerName}很生气，所以向${targetName}扔了番茄`,
+          timestamp: Date.now(),
+        };
+
+        // 更新番茄统计
+        const today = getTodayKey();
+        set((s) => {
+          const newStats = { ...s.tomatoStats };
+
+          // 我扔向对方 → 在 targetId 的统计中，thrownByMe + count
+          if (throwerId === "me" && targetId !== "me") {
+            const key = getTomatoStatKey(targetId, today);
+            if (!newStats[key]) newStats[key] = { thrownByMe: 0, thrownAtMe: 0 };
+            newStats[key].thrownByMe += tomatoCount;
+          }
+
+          // 对方扔向我 → 在 throwerId 的统计中，thrownAtMe + count
+          if (throwerId !== "me" && targetId === "me") {
+            const key = getTomatoStatKey(throwerId, today);
+            if (!newStats[key]) newStats[key] = { thrownByMe: 0, thrownAtMe: 0 };
+            newStats[key].thrownAtMe += tomatoCount;
+          }
+
+          return {
+            tomatoThrows: [...s.tomatoThrows, ...tomatoThrowsToAdd],
+            tomatoStats: newStats,
+            conversations: s.conversations.map((c) =>
+              c.id === conversationId
+                ? { ...c, messages: [...c.messages, sysMsg] }
+                : c
+            ),
+          };
+        });
+
+        // 40秒后清除番茄
+        tomatoIds.forEach((id, idx) => {
+          window.setTimeout(() => {
+            set((s) => ({
+              tomatoThrows: s.tomatoThrows.filter((t) => t.id !== id),
+            }));
+          }, 40000 + idx * 200);
+        });
+
+        // 被扔番茄的人是真实联系人时的反应
+        // 自动随机扔的番茄不触发被扔人回复，避免循环刷屏
+        if (targetId !== "me" && !auto) {
+          window.setTimeout(() => {
+            const currentState = get();
+            const { replySpeedMin, replySpeedMax } = currentState.chat;
+            const currentConv = currentState.conversations.find((c) => c.id === conversationId);
+            if (!currentConv) return;
+
+            const rand = Math.random();
+            if (rand < 0.5) {
+              // 50% 不回复
+              return;
+            } else if (rand < 0.9) {
+              // 40% 扔回番茄（1-3 个）
+              const throwCount = Math.floor(Math.random() * 3) + 1;
+              const delay = randRange(replySpeedMin * 1000, replySpeedMax * 1000);
+              window.setTimeout(() => {
+                const st = get();
+                const throwFn = st.throwTomato;
+                if (throwFn) {
+                  throwFn(conversationId, targetId, throwerId, "", true, throwCount);
+                }
+              }, delay);
+            } else {
+              // 10% 回复 1 条消息
+              const delay = randRange(replySpeedMin * 1000, replySpeedMax * 1000);
+              window.setTimeout(() => {
+                const st = get();
+                const card = st.pickRandomCard(targetId, "chat");
+                if (!card) return;
+                const stickers = st.stickers;
+                const useSticker = stickers.length > 0 && Math.random() < 0.1;
+                let msg: Message;
+                if (useSticker) {
+                  const sticker = stickers[Math.floor(Math.random() * stickers.length)];
+                  msg = {
+                    id: uid("treply"),
+                    sender: targetId,
+                    type: "sticker",
+                    sticker: sticker.image,
+                    timestamp: Date.now(),
+                  };
+                } else {
+                  msg = {
+                    id: uid("treply"),
+                    sender: targetId,
+                    type: "text",
+                    text: card.content,
+                    card,
+                    timestamp: Date.now(),
+                  };
+                }
+                set((s) => ({
+                  conversations: s.conversations.map((c) =>
+                    c.id === conversationId ? { ...c, messages: [...c.messages, msg] } : c
+                  ),
+                }));
+              }, delay);
+            }
+          }, 600);
+        }
+      },
+
+      removeTomatoThrow: (tomatoId) => {
+        set((s) => ({
+          tomatoThrows: s.tomatoThrows.filter((t) => t.id !== tomatoId),
+        }));
+      },
+
+      sendGroupListenTogether: (conversationId, songIndex) => {
+        const state = get();
+        const conv = state.conversations.find((c) => c.id === conversationId);
+        if (!conv || conv.type !== "group") return;
+        if (state.songs.length === 0) return;
+
+        const idx = songIndex !== undefined && songIndex >= 0 && songIndex < state.songs.length
+          ? songIndex
+          : Math.floor(Math.random() * state.songs.length);
+        const song = state.songs[idx];
+        const myName = state.beauty.myName;
+
+        const initMsg: Message = {
+          id: uid("music"),
+          sender: "me",
+          type: "music",
+          music: song,
+          text: `${myName} 发起了一起听「${song.title}」`,
+          timestamp: Date.now(),
+        };
+
+        set((s) => ({
+          conversations: s.conversations.map((c) =>
+            c.id === conversationId
+              ? { ...c, messages: [...c.messages, initMsg] }
+              : c
+          ),
+        }));
+
+        const { replySpeedMin, replySpeedMax } = state.chat;
+        conv.memberIds.forEach((memberId) => {
+          const delay = randRange(replySpeedMin * 1000, replySpeedMax * 1000);
+          window.setTimeout(() => {
+            const joined = Math.random() < 0.7;
+            const memberName = state.contacts.find((c) => c.id === memberId)?.name || "某人";
+            const sysMsg: Message = {
+              id: uid("sys"),
+              sender: "system",
+              type: "system",
+              systemText: joined
+                ? `${memberName} 加入了「${song.title}」一起听`
+                : `${memberName} 暂时不想一起听`,
+              timestamp: Date.now(),
+            };
+            set((s) => ({
+              conversations: s.conversations.map((c) =>
+                c.id === conversationId
+                  ? { ...c, messages: [...c.messages, sysMsg] }
+                  : c
+              ),
+            }));
+          }, delay);
+        });
       },
 
       sendRPS: (conversationId, targetId, myChoice) => {
@@ -1322,10 +2033,13 @@ export const useAppStore = create<
       sendPoll: (conversationId, question, options) => {
         const conv = get().conversations.find((c) => c.id === conversationId);
         if (!conv) return;
-        const votes: Record<string, number> = { "0": 0, "1": 0 };
+        const votes: Record<string, number> = {};
+        options.forEach((_, i) => {
+          votes[String(i)] = 0;
+        });
         const voters: Record<string, number> = {};
         for (const memberId of conv.memberIds) {
-          const choice = Math.random() < 0.5 ? 0 : 1;
+          const choice = Math.floor(Math.random() * options.length);
           votes[String(choice)]++;
           voters[memberId] = choice;
         }
@@ -1402,12 +2116,13 @@ export const useAppStore = create<
     }),
     {
       name: "cardtalk-store",
+      storage: createJSONStorage(() => idbStorage),
       partialize: (state) => ({
         contacts: state.contacts,
         activeContactId: state.activeContactId,
         conversations: state.conversations.map((c) => {
           const { _workNotified, ...rest } = c as any;
-          return { ...rest, messages: rest.messages.slice(-50) };
+          return { ...rest, messages: rest.messages };
         }),
         activeConversationId: state.activeConversationId,
         groupConversationId: state.groupConversationId,
@@ -1418,8 +2133,17 @@ export const useAppStore = create<
         chat: state.chat,
         callRecords: state.callRecords,
         memos: state.memos,
+        lastAutoMemoAt: state.lastAutoMemoAt,
+        lastAutoMailboxAt: state.lastAutoMailboxAt,
         activeCardLibContactId: state.activeCardLibContactId,
         musicCurrentIndex: state.musicCurrentIndex,
+        tomatoStats: state.tomatoStats,
+        bottleNoteCards: state.bottleNoteCards,
+        bottleWhisperCards: state.bottleWhisperCards,
+        bottleReplyCards: state.bottleReplyCards,
+        bottleDiary: state.bottleDiary,
+        bottleLetters: state.bottleLetters,
+        bottleStarPicks: state.bottleStarPicks,
       }),
       onRehydrateStorage: () => (state: any) => {
         if (!state) return;
@@ -1461,50 +2185,44 @@ export const useAppStore = create<
         if (state.beauty?.wallpaperImage === undefined) state.beauty.wallpaperImage = "";
         if (state.chat?.moodCardEnabled === undefined) state.chat.moodCardEnabled = true;
         if (state.chat?.waterReminder === undefined) state.chat.waterReminder = true;
+        if (state.chat?.pushNotification === undefined) state.chat.pushNotification = true;
         if (!state.callRecords) state.callRecords = [];
         if (!state.memos) state.memos = [];
         if (state.showMemoBar === undefined) state.showMemoBar = false;
         if (!state.songs) state.songs = [];
+        if (state.lastAutoMemoAt === undefined) state.lastAutoMemoAt = 0;
+        if (state.lastAutoMailboxAt === undefined) state.lastAutoMailboxAt = 0;
+        if (!state.tomatoStats) state.tomatoStats = {};
+        if (!state.bottleNoteCards) state.bottleNoteCards = DEFAULT_NOTE_CARDS;
+        if (!state.bottleWhisperCards) state.bottleWhisperCards = DEFAULT_WHISPER_CARDS;
+        if (!state.bottleReplyCards) state.bottleReplyCards = DEFAULT_REPLY_CARDS;
+        if (!state.bottleDiary) state.bottleDiary = [];
+        if (!state.bottleLetters) state.bottleLetters = [];
+        if (!state.bottleStarPicks) state.bottleStarPicks = {};
 
-        // 启动自动定时器（主动写备忘录 + 主动打电话）
         const setupAutoActions = () => {
-          const hours = Math.random() * 2 + 3;
+          const minHours = 3;
+          const maxHours = 5;
+          const lastAt = useAppStore.getState().lastAutoMemoAt || 0;
+          const now = Date.now();
+          const minInterval = minHours * 60 * 60 * 1000;
+          const maxInterval = maxHours * 60 * 60 * 1000;
+
+          // 如果从未发送过，或者距离上次发送已超过最大间隔，等待一个随机间隔
+          // 否则等待剩余时间，确保至少等待最小间隔的一半
+          let delay: number;
+          if (lastAt === 0) {
+            delay = (Math.random() * (maxInterval - minInterval) + minHours) * 60 * 60 * 1000;
+          } else {
+            const elapsed = now - lastAt;
+            const randomInterval = Math.random() * (maxInterval - minInterval) + minInterval;
+            const remaining = randomInterval - elapsed;
+            delay = Math.max(remaining, minInterval / 2);
+          }
+
           window.setTimeout(() => {
             const store = useAppStore.getState();
 
-            // 对方主动写备忘录：3-6条字卡合并
-            store.contacts.forEach((contact) => {
-              const allCards = [
-                ...contact.cards.chat,
-                ...contact.cards.body,
-                ...contact.cards.mood,
-                ...contact.cards.workContent,
-                ...contact.cards.workStatus,
-                ...contact.cards.travel,
-                ...contact.cards.breakfast,
-                ...contact.cards.lunch,
-                ...contact.cards.dinner,
-              ];
-              if (allCards.length === 0) return;
-              const count = Math.floor(Math.random() * 4) + 3;
-              const cardContents: string[] = [];
-              for (let i = 0; i < count; i++) {
-                const card = allCards[Math.floor(Math.random() * allCards.length)];
-                cardContents.push(card.content);
-              }
-              const mergedText = cardContents.join("\n\n");
-              useAppStore.setState((s) => ({
-                memos: [{
-                  id: uid("auto"),
-                  contactId: contact.id,
-                  text: mergedText,
-                  from: contact.id,
-                  timestamp: Date.now(),
-                }, ...s.memos].slice(0, 500),
-              }));
-            });
-
-            // 主动打电话：5%概率
             if (Math.random() < 0.05 && store.contacts.length > 0) {
               const contact = store.contacts[Math.floor(Math.random() * store.contacts.length)];
               useAppStore.setState({
@@ -1517,13 +2235,30 @@ export const useAppStore = create<
             }
 
             setupAutoActions();
-          }, hours * 60 * 60 * 1000);
+          }, delay);
         };
         setupAutoActions();
 
-        // 信箱对方主动送信：8-16小时随机间隔
         const setupMailboxSend = () => {
-          const hours = Math.random() * 8 + 8;
+          const minHours = 8;
+          const maxHours = 16;
+          const lastAt = useAppStore.getState().lastAutoMailboxAt || 0;
+          const now = Date.now();
+          const minInterval = minHours * 60 * 60 * 1000;
+          const maxInterval = maxHours * 60 * 60 * 1000;
+
+          // 如果从未发送过，或者距离上次发送已超过最大间隔，等待一个随机间隔
+          // 否则等待剩余时间，确保至少等待最小间隔的一半
+          let delay: number;
+          if (lastAt === 0) {
+            delay = Math.random() * (maxInterval - minInterval) + minInterval;
+          } else {
+            const elapsed = now - lastAt;
+            const randomInterval = Math.random() * (maxInterval - minInterval) + minInterval;
+            const remaining = randomInterval - elapsed;
+            delay = Math.max(remaining, minInterval / 2);
+          }
+
           window.setTimeout(() => {
             const store = useAppStore.getState();
             store.contacts.forEach((contact) => {
@@ -1552,6 +2287,7 @@ export const useAppStore = create<
               }
               const mergedText = cardContents.join("\n\n");
               useAppStore.setState((s) => ({
+                lastAutoMailboxAt: Date.now(),
                 memos: [{
                   id: uid("mbox-auto"),
                   contactId: contact.id,
@@ -1562,7 +2298,7 @@ export const useAppStore = create<
               }));
             });
             setupMailboxSend();
-          }, hours * 60 * 60 * 1000);
+          }, delay);
         };
         setupMailboxSend();
 

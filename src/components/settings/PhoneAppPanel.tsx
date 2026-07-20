@@ -6,6 +6,7 @@ const APPS = [
   { id: "mood", icon: "🌸", name: "心情" },
   { id: "work", icon: "💼", name: "工作" },
   { id: "travel", icon: "🚇", name: "出行" },
+  { id: "tomato", icon: "🍅", name: "番茄计数器" },
 ];
 
 export default function PhoneAppPanel() {

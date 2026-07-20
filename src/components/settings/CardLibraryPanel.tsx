@@ -1,10 +1,10 @@
-import { useRef, useState, useEffect } from "react";
-import { Plus, Trash2, Upload, RotateCcw, Check, FolderPlus, Download, Users, Search, Edit2 } from "lucide-react";
+import { useRef, useState, useEffect, useMemo } from "react";
+import { Plus, Trash2, Upload, RotateCcw, Check, FolderPlus, Download, Users, Search, Edit2, X } from "lucide-react";
 import { useAppStore } from "@/store/app";
 import { MODULE_LABELS, type CardModule } from "@/types/card";
 import type { Card } from "@/types/card";
 
-const MODULE_ORDER: CardModule[] = ["chat", "mood", "body", "workStatus", "workContent", "travel", "breakfast", "lunch", "dinner"];
+const MODULE_ORDER: CardModule[] = ["chat", "mood", "body", "workStatus", "workContent", "workLocation", "travel", "breakfast", "lunch", "dinner"];
 
 export default function CardLibraryPanel() {
   const contacts = useAppStore((s) => s.contacts);
@@ -42,6 +42,10 @@ export default function CardLibraryPanel() {
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [importJsonResult, setImportJsonResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchModalText, setSearchModalText] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 30;
   const importFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -49,6 +53,10 @@ export default function CardLibraryPanel() {
       setActiveCardLibContactId(contacts[0].id);
     }
   }, [activeCardLibContactId, contacts, setActiveCardLibContactId]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeModule, activeGroup, searchText, searchModalText]);
 
   const currentContact = contacts.find((c) => c.id === activeCardLibContactId);
   const cards = currentContact?.cards ?? ({} as Record<CardModule, Card[]>);
@@ -89,13 +97,14 @@ export default function CardLibraryPanel() {
 
   const isChat = activeModule === "chat";
   const allList = cards[activeModule] ?? [];
+  const searchQuery = searchText.trim() || searchModalText.trim();
   const list = allList.filter((c) => {
     let match = true;
     if (isChat && activeGroup !== "全部") {
       match = match && (c.group || "日常") === activeGroup;
     }
-    if (searchText.trim()) {
-      const q = searchText.trim().toLowerCase();
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
       match = match && (
         c.name.toLowerCase().includes(q) ||
         (c.content || "").toLowerCase().includes(q)
@@ -103,6 +112,9 @@ export default function CardLibraryPanel() {
     }
     return match;
   });
+
+  const totalPages = Math.ceil(list.length / PAGE_SIZE);
+  const paginatedList = list.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
@@ -235,31 +247,6 @@ export default function CardLibraryPanel() {
             style={{ borderColor: "var(--card-border)", background: "var(--card)", color: "var(--text)" }}
           />
         </div>
-        <button
-          onClick={doExport}
-          disabled={!activeCardLibContactId}
-          className="ml-auto flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] transition hover:bg-black/5 disabled:opacity-40"
-          style={{ borderColor: "var(--card-border)", color: "var(--text)" }}
-        >
-          <Download className="h-3.5 w-3.5" />
-          导出字卡库
-        </button>
-        <button
-          onClick={() => importFileRef.current?.click()}
-          disabled={!activeCardLibContactId}
-          className="flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] transition hover:bg-black/5 disabled:opacity-40"
-          style={{ borderColor: "var(--card-border)", color: "var(--text)" }}
-        >
-          <Upload className="h-3.5 w-3.5" />
-          导入字卡库
-        </button>
-        <input
-          ref={importFileRef}
-          type="file"
-          accept="application/json"
-          className="hidden"
-          onChange={doImportFile}
-        />
       </div>
 
       {importJsonResult && (
@@ -376,16 +363,14 @@ export default function CardLibraryPanel() {
 
       {/* 操作栏 */}
       <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: "var(--text-soft)" }} />
-          <input
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            placeholder="搜索字卡名称或内容..."
-            className="w-full rounded-lg border pl-7 pr-2 py-1.5 text-[11px] outline-none focus:border-[var(--accent)]"
-            style={{ borderColor: "var(--card-border)", background: "var(--bg)", color: "var(--text)" }}
-          />
-        </div>
+        <button
+          onClick={() => setShowSearch(true)}
+          className="flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] transition hover:bg-black/5"
+          style={{ borderColor: "var(--card-border)", color: "var(--text)" }}
+        >
+          <Search className="h-3.5 w-3.5" />
+          搜索
+        </button>
         <button
           onClick={() => setShowAdd(!showAdd)}
           className="flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] transition hover:bg-black/5"
@@ -530,7 +515,7 @@ export default function CardLibraryPanel() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-2">
-            {list.map((c) => (
+            {paginatedList.map((c) => (
               <CardItem
                 key={c.id}
                 card={c}
@@ -544,15 +529,66 @@ export default function CardLibraryPanel() {
                   setEditGroup(c.group || "日常");
                 }}
                 isChat={isChat}
-                cardGroups={cardGroups}
-                onSetGroup={(g) => activeCardLibContactId && setCardGroup(activeCardLibContactId, c.id, g)}
               />
             ))}
           </div>
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-1 py-2">
+          <button
+            onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+            disabled={currentPage === 1}
+            className="rounded px-2 py-1 text-xs transition hover:bg-black/5 disabled:opacity-40"
+            style={{ color: "var(--text)" }}
+          >
+            上一页
+          </button>
+          <span className="text-xs" style={{ color: "var(--text-soft)" }}>
+            {currentPage} / {totalPages}
+          </span>
+          <button
+            onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+            disabled={currentPage === totalPages}
+            className="rounded px-2 py-1 text-xs transition hover:bg-black/5 disabled:opacity-40"
+            style={{ color: "var(--text)" }}
+          >
+            下一页
+          </button>
+        </div>
+      )}
         </>
       )}
+
+      {/* 导入导出按钮（移到最下面） */}
+      <div className="flex items-center justify-center gap-3 pt-2">
+        <button
+          onClick={doExport}
+          disabled={!activeCardLibContactId}
+          className="flex items-center gap-1 rounded-lg border px-4 py-2 text-[12px] transition hover:bg-black/5 disabled:opacity-40"
+          style={{ borderColor: "var(--card-border)", color: "var(--text)" }}
+        >
+          <Download className="h-4 w-4" />
+          导出字卡库
+        </button>
+        <button
+          onClick={() => importFileRef.current?.click()}
+          disabled={!activeCardLibContactId}
+          className="flex items-center gap-1 rounded-lg border px-4 py-2 text-[12px] transition hover:bg-black/5 disabled:opacity-40"
+          style={{ borderColor: "var(--card-border)", color: "var(--text)" }}
+        >
+          <Upload className="h-4 w-4" />
+          导入字卡库
+        </button>
+        <input
+          ref={importFileRef}
+          type="file"
+          accept="application/json"
+          className="hidden"
+          onChange={doImportFile}
+        />
+      </div>
 
       {/* 编辑字卡弹窗 */}
       {editingCard && (
@@ -652,6 +688,87 @@ export default function CardLibraryPanel() {
           </div>
         </div>
       )}
+
+      {showSearch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div
+            className="w-[90%] max-w-md rounded-2xl border p-4"
+            style={{
+              borderColor: "var(--card-border)",
+              background: "var(--card)",
+            }}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="font-serif text-lg font-bold" style={{ color: "var(--text)" }}>
+                搜索字卡
+              </div>
+              <button
+                onClick={() => {
+                  setShowSearch(false);
+                  setSearchModalText("");
+                }}
+                className="flex h-6 w-6 items-center justify-center rounded-full transition hover:bg-black/10"
+                style={{ color: "var(--text-soft)" }}
+                aria-label="关闭"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="relative mb-4">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-soft)" }} />
+              <input
+                autoFocus
+                value={searchModalText}
+                onChange={(e) => setSearchModalText(e.target.value)}
+                placeholder="输入字卡名称或内容..."
+                className="w-full rounded-xl border pl-10 pr-4 py-2.5 text-sm outline-none focus:border-[var(--accent)]"
+                style={{
+                  borderColor: "var(--card-border)",
+                  background: "var(--bg)",
+                  color: "var(--text)",
+                }}
+              />
+            </div>
+            <div className="max-h-[400px] overflow-y-auto">
+              {list.length === 0 ? (
+                <div className="py-8 text-center text-sm" style={{ color: "var(--text-soft)" }}>
+                  {searchModalText.trim() ? "未找到匹配的字卡" : "输入关键词搜索字卡"}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {list.slice(0, 50).map((c) => (
+                    <div
+                      key={c.id}
+                      className="rounded-xl border p-3 transition hover:bg-black/5 cursor-pointer"
+                      style={{
+                        borderColor: "var(--card-border)",
+                        background: "var(--bg)",
+                      }}
+                      onClick={() => {
+                        setShowSearch(false);
+                        setSearchModalText("");
+                        setEditingCard(c);
+                        setEditName(c.name);
+                        setEditContent(c.content || "");
+                        setEditGroup(c.group || "日常");
+                      }}
+                    >
+                      <div className="font-medium text-sm" style={{ color: "var(--text)" }}>
+                        {c.name}
+                      </div>
+                      {c.content && (
+                        <div className="mt-1 text-xs" style={{ color: "var(--text-soft)" }}>
+                          {c.content}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -699,10 +816,24 @@ function StickerSection() {
       e.target.value = "";
       return;
     }
+    // 限制单次最多导入 50 张
+    const toProcess = files.slice(0, 50);
     setImporting(true);
     try {
-      const images = await Promise.all(files.map((f) => compressImage(f)));
-      addStickers(images);
+      const images: string[] = [];
+      // 顺序处理，避免同时加载大量图片导致卡死
+      for (const f of toProcess) {
+        try {
+          const dataUrl = await compressImage(f);
+          images.push(dataUrl);
+        } catch (err) {
+          // 跳过失败的图片
+          console.warn("图片压缩失败，跳过:", f.name, err);
+        }
+      }
+      if (images.length > 0) {
+        addStickers(images);
+      }
     } finally {
       setImporting(false);
       e.target.value = "";
@@ -833,8 +964,6 @@ function CardItem({
   onDelete,
   onEdit,
   isChat,
-  cardGroups,
-  onSetGroup,
 }: {
   card: Card;
   selected: boolean;
@@ -842,8 +971,6 @@ function CardItem({
   onDelete: () => void;
   onEdit: () => void;
   isChat?: boolean;
-  cardGroups?: string[];
-  onSetGroup?: (g: string) => void;
 }) {
   return (
     <div
@@ -875,20 +1002,12 @@ function CardItem({
         >
           {card.content || card.name}
         </div>
+        {isChat && card.group && (
+          <div className="mt-1 text-[9px]" style={{ color: "var(--text-soft)" }}>
+            {card.group}
+          </div>
+        )}
       </div>
-      {isChat && onSetGroup && cardGroups && (
-        <select
-          value={card.group || "日常"}
-          onChange={(e) => { e.stopPropagation(); onSetGroup(e.target.value); }}
-          onClick={(e) => e.stopPropagation()}
-          className="shrink-0 rounded border bg-transparent px-1 py-0.5 text-[9px] outline-none"
-          style={{ borderColor: "var(--card-border)", color: "var(--text-soft)" }}
-        >
-          {cardGroups.map((g) => (
-            <option key={g} value={g}>{g}</option>
-          ))}
-        </select>
-      )}
       <button
         onClick={(e) => {
           e.stopPropagation();

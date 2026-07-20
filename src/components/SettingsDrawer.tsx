@@ -1,18 +1,20 @@
 import { useState } from "react";
-import { X, Palette, MessageSquare, Library, Smartphone } from "lucide-react";
+import { X, Palette, MessageSquare, Library, Smartphone, Database } from "lucide-react";
 import { useAppStore } from "@/store/app";
 import BeautyPanel from "./settings/BeautyPanel";
 import ChatSettingPanel from "./settings/ChatSettingPanel";
 import CardLibraryPanel from "./settings/CardLibraryPanel";
 import PhoneAppPanel from "./settings/PhoneAppPanel";
+import BackupPanel from "./settings/BackupPanel";
 
-type Tab = "beauty" | "chat" | "cards" | "phone";
+type Tab = "beauty" | "chat" | "cards" | "phone" | "backup";
 
 const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: "beauty", label: "美化", icon: <Palette className="h-4 w-4" /> },
   { key: "chat", label: "聊天设置", icon: <MessageSquare className="h-4 w-4" /> },
   { key: "cards", label: "字卡库", icon: <Library className="h-4 w-4" /> },
   { key: "phone", label: "手机小应用", icon: <Smartphone className="h-4 w-4" /> },
+  { key: "backup", label: "备份", icon: <Database className="h-4 w-4" /> },
 ];
 
 export default function SettingsDrawer() {
@@ -50,11 +52,11 @@ export default function SettingsDrawer() {
             </div>
             <button
               onClick={() => setOpen(false)}
-              className="flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-black/10"
+              className="flex h-10 w-10 items-center justify-center rounded-full transition hover:bg-black/10 active:scale-90"
               style={{ color: "var(--text-soft)" }}
               aria-label="关闭"
             >
-              <X className="h-4 w-4" />
+              <X className="h-5 w-5" />
             </button>
           </header>
 
@@ -87,6 +89,7 @@ export default function SettingsDrawer() {
             {tab === "chat" && <ChatSettingPanel />}
             {tab === "cards" && <CardLibraryPanel />}
             {tab === "phone" && <PhoneAppPanel />}
+            {tab === "backup" && <BackupPanel />}
           </div>
         </div>
       </aside>

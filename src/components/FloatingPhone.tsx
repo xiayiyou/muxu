@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Phone, PhoneOff, Maximize2 } from "lucide-react";
+import { PhoneOff, Maximize2, GripVertical } from "lucide-react";
 import { useAppStore } from "@/store/app";
 
 export default function FloatingPhone() {
@@ -29,35 +29,49 @@ export default function FloatingPhone() {
     }
   }, [floatingPhone, activeCall]);
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const startDrag = (clientX: number, clientY: number) => {
     dragging.current = true;
     moved.current = false;
-    const rect = e.currentTarget.getBoundingClientRect();
     offset.current = {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
+      x: clientX - pos.x,
+      y: clientY - pos.y,
     };
   };
 
+  const onDrag = (clientX: number, clientY: number) => {
+    if (!dragging.current) return;
+    moved.current = true;
+    const width = 170;
+    const height = 52;
+    setPos({
+      x: Math.max(8, Math.min(window.innerWidth - width - 8, clientX - offset.current.x)),
+      y: Math.max(8, Math.min(window.innerHeight - height - 8, clientY - offset.current.y)),
+    });
+  };
+
+  const endDrag = () => {
+    dragging.current = false;
+  };
+
   useEffect(() => {
-    const handleMove = (e: MouseEvent) => {
-      if (!dragging.current) return;
-      moved.current = true;
-      const maxX = window.innerWidth - 170;
-      const maxY = window.innerHeight - 50;
-      setPos({
-        x: Math.max(0, Math.min(maxX, e.clientX - offset.current.x)),
-        y: Math.max(0, Math.min(maxY, e.clientY - offset.current.y)),
-      });
+    const handleMouseMove = (e: MouseEvent) => onDrag(e.clientX, e.clientY);
+    const handleMouseUp = () => endDrag();
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        onDrag(e.touches[0].clientX, e.touches[0].clientY);
+      }
     };
-    const handleUp = () => {
-      dragging.current = false;
-    };
-    window.addEventListener("mousemove", handleMove);
-    window.addEventListener("mouseup", handleUp);
+    const handleTouchEnd = () => endDrag();
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener("touchmove", handleTouchMove, { passive: false });
+    window.addEventListener("touchend", handleTouchEnd);
     return () => {
-      window.removeEventListener("mousemove", handleMove);
-      window.removeEventListener("mouseup", handleUp);
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleTouchEnd);
     };
   }, []);
 
@@ -66,7 +80,7 @@ export default function FloatingPhone() {
     setCallModalOpen(true);
   };
 
-  const handleEndCall = (e: React.MouseEvent) => {
+  const handleEndCall = (e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
     endActiveCall();
   };
@@ -75,26 +89,36 @@ export default function FloatingPhone() {
 
   return (
     <div
-      className="fixed z-[200] select-none cursor-pointer"
+      className="fixed z-[200] select-none"
       style={{ left: pos.x, top: pos.y }}
-      onMouseDown={handleMouseDown}
-      onClick={handleClick}
     >
       <div
-        className="flex items-center gap-3 rounded-full border px-3 py-2 shadow-lg transition hover:shadow-xl"
+        className="flex items-center gap-1.5 rounded-full border px-2 py-1.5 shadow-lg transition hover:shadow-xl"
         style={{
           borderColor: "var(--card-border)",
           background: "var(--card)",
         }}
       >
         <div
-          className="flex h-9 w-9 items-center justify-center rounded-full text-base font-bold"
+          className="flex h-8 w-6 shrink-0 items-center justify-center rounded-full cursor-grab active:cursor-grabbing hover:bg-black/5"
+          style={{ color: "var(--text-soft)" }}
+          onMouseDown={(e) => { e.preventDefault(); startDrag(e.clientX, e.clientY); }}
+          onTouchStart={(e) => startDrag(e.touches[0].clientX, e.touches[0].clientY)}
+          title="拖动移动"
+        >
+          <GripVertical className="h-4 w-4" />
+        </div>
+
+        <div
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold cursor-pointer"
           style={{ background: "var(--bg)", color: "var(--text)" }}
+          onClick={handleClick}
+          title="点击恢复通话"
         >
           {activeCall.contactAvatar || "他"}
         </div>
 
-        <div className="flex flex-col">
+        <div className="flex flex-col cursor-pointer" onClick={handleClick}>
           <div
             className="text-xs font-bold leading-tight"
             style={{ color: "var(--text)" }}
@@ -113,7 +137,8 @@ export default function FloatingPhone() {
 
         <button
           onClick={handleEndCall}
-          className="ml-1 flex h-7 w-7 items-center justify-center rounded-full transition hover:scale-110"
+          onTouchStart={(e) => { e.stopPropagation(); }}
+          className="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition hover:scale-110"
           style={{
             background: "#E74C3C",
             color: "white",

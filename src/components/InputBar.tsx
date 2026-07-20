@@ -1,18 +1,23 @@
-import { useState, type KeyboardEvent } from "react";
-import { Send, Smile, X } from "lucide-react";
+import { useState, useRef, type KeyboardEvent } from "react";
+import { Send, Smile, X, ImageIcon } from "lucide-react";
 import { useAppStore } from "@/store/app";
+import { compressImage } from "@/lib/utils";
 
 export default function InputBar() {
   const conversations = useAppStore((s) => s.conversations);
   const activeConversationId = useAppStore((s) => s.activeConversationId);
   const send = useAppStore((s) => s.send);
   const sendStickerInConv = useAppStore((s) => s.sendStickerInConv);
+  const sendImageInConv = useAppStore((s) => s.sendImageInConv);
   const stickers = useAppStore((s) => s.stickers);
+  const quotingMessageId = useAppStore((s) => s.quotingMessageId);
   const [text, setText] = useState("");
   const [showStickers, setShowStickers] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const activeConv = conversations.find((c) => c.id === activeConversationId);
   const isGroup = activeConv?.type === "group";
+  const quotedMsg = quotingMessageId ? activeConv?.messages.find((m) => m.id === quotingMessageId) : null;
 
   const onSend = () => {
     if (!text.trim() || !activeConv) return;
@@ -33,18 +38,64 @@ export default function InputBar() {
     setShowStickers(false);
   };
 
+  const onPickImage = async (files: FileList | null) => {
+    if (!files || !activeConv) return;
+    const file = files[0];
+    if (!file || !file.type.startsWith("image/")) return;
+    try {
+      const compressed = await compressImage(file, 800, 0.8);
+      sendImageInConv(activeConv.id, compressed, "me");
+    } catch (err) {
+      console.error("图片发送失败", err);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
   const placeholder = isGroup
     ? "说点什么吧"
     : "说点什么吧（Enter 发送）";
 
   return (
     <div
-      className="border-t px-4 py-3 backdrop-blur md:px-8"
+      className="border-t px-4 py-3 backdrop-blur md:px-8 cute-input-bar"
       style={{
         borderColor: "var(--card-border)",
         background: "color-mix(in srgb, var(--bg-deep) 70%, transparent)",
       }}
     >
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => onPickImage(e.target.files)}
+      />
+
+      {quotedMsg && (
+        <div className="mx-auto mb-2 flex max-w-3xl items-center gap-2 rounded-lg border-l-2 px-3 py-2"
+          style={{
+            background: "color-mix(in srgb, var(--accent) 8%, transparent)",
+            borderColor: "var(--accent)",
+          }}
+        >
+          <div className="flex-1 min-w-0">
+            <div className="text-[10px] font-medium" style={{ color: "var(--accent)" }}>
+              {quotedMsg.sender === "me" ? "我" : "对方"}
+            </div>
+            <div className="truncate text-[12px]" style={{ color: "var(--text-soft)" }}>
+              {quotedMsg.text || (quotedMsg.sticker ? "[表情包]" : quotedMsg.image ? "[图片]" : "")}
+            </div>
+          </div>
+          <button
+            onClick={() => useAppStore.setState({ quotingMessageId: null })}
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition hover:bg-black/10"
+            style={{ color: "var(--text-soft)" }}
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
+
       {showStickers && (
         <div
           className="mx-auto mb-2 max-w-3xl animate-slideUp rounded-2xl border p-2"
@@ -103,7 +154,7 @@ export default function InputBar() {
       <div className="mx-auto flex max-w-3xl items-end gap-2">
         <button
           onClick={() => setShowStickers(!showStickers)}
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border transition hover:bg-black/5"
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border transition hover:bg-black/5 cute-sticker-btn"
           style={{
             borderColor: showStickers ? "var(--accent)" : "var(--card-border)",
             background: showStickers ? "var(--accent)" : "var(--card)",
@@ -114,6 +165,21 @@ export default function InputBar() {
         >
           <Smile className="h-5 w-5" />
         </button>
+
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border transition hover:bg-black/5 cute-image-btn"
+          style={{
+            borderColor: "var(--card-border)",
+            background: "var(--card)",
+            color: "var(--text-soft)",
+          }}
+          aria-label="发送图片"
+          title="发送图片"
+        >
+          <ImageIcon className="h-5 w-5" />
+        </button>
+
         <div
           className="flex-1 rounded-2xl border px-4 py-2.5 shadow-inner focus-within:border-[var(--accent)]"
           style={{
@@ -134,7 +200,7 @@ export default function InputBar() {
         <button
           onClick={onSend}
           disabled={!text.trim()}
-          className="group flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl transition disabled:cursor-not-allowed"
+          className="group flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl transition disabled:cursor-not-allowed cute-send-btn"
           style={{
             background: "var(--accent)",
             color: "var(--card)",

@@ -16,6 +16,8 @@ export default function MusicApp({ onBack }: Props) {
   const setMusicCurrentIndex = useAppStore((s) => s.setMusicCurrentIndex);
   const setMusicFloating = useAppStore((s) => s.setMusicFloating);
   const setMusicSwitchNote = useAppStore((s) => s.setMusicSwitchNote);
+  const themeId = useAppStore((s) => s.beauty.themeId);
+  const isCuteMoe = themeId === "cute-moe";
 
   const [volume, setVolume] = useState(0.7);
   const [showAddUrl, setShowAddUrl] = useState(false);
@@ -103,27 +105,28 @@ export default function MusicApp({ onBack }: Props) {
   };
 
   return (
-    <div className="flex h-full flex-col">
+    <div className={`flex h-full flex-col ${isCuteMoe ? "cute-music-app" : ""}`}>
       <audio ref={audioRef} onEnded={handleEnded} />
-      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: "var(--card-border)" }}>
-        <button onClick={onBack} className="text-sm" style={{ color: "var(--text-soft)" }}>返回</button>
-        <span className="text-sm font-medium" style={{ color: "var(--text)" }}>音乐</span>
-        <button onClick={handleMinimize} className="flex items-center gap-1 text-xs" style={{ color: "var(--text-soft)" }}>
+      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: isCuteMoe ? "rgba(212,184,184,0.3)" : "var(--card-border)" }}>
+        <button onClick={onBack} className="text-sm" style={{ color: isCuteMoe ? "#8BA8B8" : "var(--text-soft)" }}>返回</button>
+        <span className="text-sm font-medium" style={{ color: isCuteMoe ? "#5F7A8C" : "var(--text)" }}>音乐</span>
+        <button onClick={handleMinimize} className="flex items-center gap-1 text-xs" style={{ color: isCuteMoe ? "#8BA8B8" : "var(--text-soft)" }}>
           <Minimize2 className="h-3.5 w-3.5" />
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
-        <div className="mb-6 rounded-3xl p-6 text-center" style={{
-          background: "linear-gradient(135deg, var(--accent) 20%, var(--accent) 10%)",
+        <div className="mb-6 rounded-3xl p-6 text-center cute-music-cover" style={{
+          background: isCuteMoe ? "rgba(255, 230, 235, 0.85)" : "linear-gradient(135deg, var(--accent) 20%, var(--accent) 10%)",
+          border: isCuteMoe ? "1px solid rgba(212,184,184,0.35)" : "none",
         }}>
-          <div className="mb-4 flex h-24 w-24 items-center justify-center rounded-full mx-auto" style={{ background: "var(--card)" }}>
-            <Music className="h-12 w-12" style={{ color: "var(--accent)" }} />
+          <div className="mb-4 flex h-24 w-24 items-center justify-center rounded-full mx-auto cute-music-disc" style={{ background: isCuteMoe ? "rgba(255,255,255,0.82)" : "var(--card)" }}>
+            <Music className="h-12 w-12" style={{ color: isCuteMoe ? "#E88B8B" : "var(--accent)" }} />
           </div>
-          <div className="font-serif text-xl font-bold mb-1" style={{ color: "var(--card)" }}>
+          <div className="font-serif text-xl font-bold mb-1" style={{ color: isCuteMoe ? "#5F7A8C" : "var(--card)" }}>
             {currentSong?.title || "暂无歌曲"}
           </div>
-          <div className="text-sm opacity-80" style={{ color: "var(--card)" }}>
+          <div className="text-sm opacity-80" style={{ color: isCuteMoe ? "#8BA8B8" : "var(--card)" }}>
             {currentSong?.url ? "已加载" : "请添加音乐链接"}
           </div>
         </div>
@@ -133,7 +136,7 @@ export default function MusicApp({ onBack }: Props) {
             onClick={prevSong}
             disabled={songs.length === 0}
             className="flex h-12 w-12 items-center justify-center rounded-full transition hover:bg-black/5 disabled:opacity-40"
-            style={{ background: "var(--bg)", color: "var(--text)" }}
+            style={{ background: isCuteMoe ? "rgba(255, 230, 235, 0.7)" : "var(--bg)", color: isCuteMoe ? "#5F7A8C" : "var(--text)" }}
           >
             <SkipBack className="h-5 w-5" />
           </button>
@@ -142,9 +145,9 @@ export default function MusicApp({ onBack }: Props) {
             disabled={!currentSong?.url}
             className="flex h-16 w-16 items-center justify-center rounded-full transition hover:scale-105 active:scale-95 disabled:opacity-40"
             style={{
-              background: "var(--accent)",
+              background: isCuteMoe ? "#E88B8B" : "var(--accent)",
               color: "var(--card)",
-              boxShadow: "0 4px 15px rgba(199, 62, 58, 0.3)",
+              boxShadow: isCuteMoe ? "0 4px 15px rgba(232, 139, 139, 0.3)" : "0 4px 15px rgba(199, 62, 58, 0.3)",
             }}
           >
             {musicPlaying ? <Pause className="h-7 w-7" /> : <Play className="h-7 w-7" />}
@@ -153,14 +156,14 @@ export default function MusicApp({ onBack }: Props) {
             onClick={nextSong}
             disabled={songs.length === 0}
             className="flex h-12 w-12 items-center justify-center rounded-full transition hover:bg-black/5 disabled:opacity-40"
-            style={{ background: "var(--bg)", color: "var(--text)" }}
+            style={{ background: isCuteMoe ? "rgba(255, 230, 235, 0.7)" : "var(--bg)", color: isCuteMoe ? "#5F7A8C" : "var(--text)" }}
           >
             <SkipForward className="h-5 w-5" />
           </button>
         </div>
 
         <div className="mb-6">
-          <div className="mb-2 flex items-center justify-between text-xs" style={{ color: "var(--text-soft)" }}>
+          <div className="mb-2 flex items-center justify-between text-xs" style={{ color: isCuteMoe ? "#8BA8B8" : "var(--text-soft)" }}>
             <span>音量</span>
             <span>{Math.round(volume * 100)}%</span>
           </div>
@@ -171,21 +174,21 @@ export default function MusicApp({ onBack }: Props) {
             step="0.1"
             value={volume}
             onChange={(e) => setVolume(parseFloat(e.target.value))}
-            className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
+            className="w-full h-1.5 rounded-full appearance-none cursor-pointer cute-music-volume"
             style={{
-              background: "var(--bg-deep)",
+              background: isCuteMoe ? "rgba(212,184,184,0.25)" : "var(--bg-deep)",
             }}
           />
         </div>
 
         <div className="mb-4 flex items-center justify-between">
-          <div className="font-serif text-sm font-bold" style={{ color: "var(--text)" }}>
+          <div className="font-serif text-sm font-bold" style={{ color: isCuteMoe ? "#5F7A8C" : "var(--text)" }}>
             播放列表
           </div>
           <button
             onClick={() => setShowAddUrl(true)}
             className="flex items-center gap-1 text-xs transition hover:opacity-80"
-            style={{ color: "var(--accent)" }}
+            style={{ color: isCuteMoe ? "#E88B8B" : "var(--accent)" }}
           >
             <Plus className="h-3 w-3" />
             添加歌曲

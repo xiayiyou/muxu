@@ -1,8 +1,12 @@
+import { useState } from "react";
 import { useAppStore } from "@/store/app";
 
 export default function ChatSettingPanel() {
   const chat = useAppStore((s) => s.chat);
   const setChat = useAppStore((s) => s.setChat);
+  const activeConversationId = useAppStore((s) => s.activeConversationId);
+  const clearMessages = useAppStore((s) => s.clearMessages);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   return (
     <div className="flex flex-col gap-5">
@@ -124,6 +128,75 @@ export default function ChatSettingPanel() {
           onChange={(v) => setChat({ waterReminder: v })}
         />
       </Section>
+
+      <Section title="后台推送提醒">
+        <Toggle
+          label="网页在后台时，对方回复消息、发信或回复备忘录，用浏览器推送通知提醒你上线看看"
+          checked={chat.pushNotification}
+          onChange={(v) => setChat({ pushNotification: v })}
+        />
+      </Section>
+
+      <Section title="聊天记录">
+        <div className="mb-2 text-[11px]" style={{ color: "var(--text-soft)" }}>
+          清除当前会话的所有聊天消息，其他数据不受影响。
+        </div>
+        <button
+          onClick={() => setShowClearConfirm(true)}
+          className="w-full rounded-lg border py-2.5 text-xs font-medium transition hover:bg-red-50"
+          style={{
+            borderColor: "rgba(231, 76, 60, 0.3)",
+            color: "#E74C3C",
+            background: "var(--card)",
+          }}
+        >
+          清除聊天记录
+        </button>
+      </Section>
+
+      {showClearConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={() => setShowClearConfirm(false)}
+        >
+          <div
+            className="w-[80%] max-w-sm rounded-2xl border p-5"
+            style={{
+              borderColor: "var(--card-border)",
+              background: "var(--card)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-2 text-center font-serif text-base font-bold" style={{ color: "var(--text)" }}>
+              确认清除聊天记录？
+            </div>
+            <div className="mb-4 text-center text-xs" style={{ color: "var(--text-soft)" }}>
+              此操作将删除当前会话的所有消息，且不可恢复。其他数据（联系人、字卡、设置等）不受影响。
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                className="flex-1 rounded-xl py-2.5 text-sm transition hover:bg-black/5"
+                style={{ background: "var(--bg)", color: "var(--text)" }}
+              >
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  if (activeConversationId) {
+                    clearMessages(activeConversationId);
+                  }
+                  setShowClearConfirm(false);
+                }}
+                className="flex-1 rounded-xl py-2.5 text-sm font-medium text-white transition hover:opacity-90"
+                style={{ background: "#E74C3C" }}
+              >
+                确认清除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

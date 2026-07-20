@@ -8,9 +8,12 @@ import TravelApp from "./apps/TravelApp";
 import MealsApp from "./apps/MealsApp";
 import PhoneApp from "./apps/PhoneApp";
 import MusicApp from "./apps/MusicApp";
+import WeatherApp from "./apps/WeatherApp";
+import TomatoApp from "./apps/TomatoApp";
+import DriftBottleApp from "./apps/DriftBottleApp";
 import HomeScreen from "./apps/HomeScreen";
 
-export type PhoneAppId = "home" | "chat" | "body" | "mood" | "work" | "travel" | "meals" | "phone" | "music";
+export type PhoneAppId = "home" | "chat" | "body" | "mood" | "work" | "travel" | "meals" | "phone" | "music" | "weather" | "tomato" | "driftbottle";
 
 // 可爱简约图标（SVG）
 const ChatIcon = ({ color }: { color: string }) => (
@@ -112,6 +115,53 @@ const MusicNoteIcon = ({ color }: { color: string }) => (
   </svg>
 );
 
+const SunCloudIcon = ({ color }: { color: string }) => (
+  <svg viewBox="0 0 32 32" className="h-7 w-7">
+    <circle cx="11" cy="11" r="5" fill={color} opacity="0.3" />
+    <circle cx="11" cy="11" r="5" fill="none" stroke={color} strokeWidth="1.5" />
+    <path d="M11 3v2M11 17v2M3 11h2M17 11h2M5.5 5.5l1.5 1.5M15 15l1.5 1.5M5.5 16.5l1.5-1.5M15 7l1.5-1.5" stroke={color} strokeWidth="1.2" strokeLinecap="round" opacity="0.6" />
+    <path d="M22 20c0-3-2.5-5-5.5-5s-5.5 2-5.5 4.5" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+    <ellipse cx="20" cy="21" rx="7" ry="4" fill={color} opacity="0.2" />
+    <ellipse cx="20" cy="21" rx="7" ry="4" fill="none" stroke={color} strokeWidth="1.5" />
+  </svg>
+);
+
+const TomatoIcon = ({ color }: { color: string }) => (
+  <svg viewBox="0 0 32 32" className="h-7 w-7">
+    <path
+      d="M16 27c-6 0-10-4-10-9 0-4 3-7 7-8 0.5 2 2 3.5 3 3.5 1 0 2-1 2.5-2.5 3 0.5 5.5 3.5 5.5 7 0 5-4 9-8 9z"
+      fill={color}
+      opacity="0.2"
+    />
+    <path
+      d="M16 27c-6 0-10-4-10-9 0-4 3-7 7-8 0.5 2 2 3.5 3 3.5 1 0 2-1 2.5-2.5 3 0.5 5.5 3.5 5.5 7 0 5-4 9-8 9z"
+      fill="none"
+      stroke={color}
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+    />
+    <path d="M14 10c1-2 3-2 4-1" stroke={color} strokeWidth="1.5" strokeLinecap="round" fill="none" />
+    <path d="M13 8c2-1 4 0 5 1" stroke={color} strokeWidth="1.2" strokeLinecap="round" fill="none" opacity="0.6" />
+  </svg>
+);
+
+const StarIcon = ({ color }: { color: string }) => (
+  <svg viewBox="0 0 32 32" className="h-7 w-7">
+    <path
+      d="M16 3l3.8 7.7 8.5 1.2-6.2 6 1.5 8.5L16 23.8 8.4 26.4 9.9 17.9 3.7 11.9l8.5-1.2L16 3z"
+      fill={color}
+      opacity="0.25"
+    />
+    <path
+      d="M16 3l3.8 7.7 8.5 1.2-6.2 6 1.5 8.5L16 23.8 8.4 26.4 9.9 17.9 3.7 11.9l8.5-1.2L16 3z"
+      fill="none"
+      stroke={color}
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 const APPS: { id: PhoneAppId; name: string; Icon: (p: { color: string }) => JSX.Element; color: string }[] = [
   { id: "chat", name: "聊天", Icon: ChatIcon, color: "#3A7CA5" },
   { id: "meals", name: "三餐", Icon: BowlIcon, color: "#FF8A65" },
@@ -119,8 +169,11 @@ const APPS: { id: PhoneAppId; name: string; Icon: (p: { color: string }) => JSX.
   { id: "mood", name: "心情", Icon: FlowerIcon, color: "#F06292" },
   { id: "work", name: "工作", Icon: BriefIcon, color: "#7CB342" },
   { id: "travel", name: "出行", Icon: TrainIcon, color: "#8B6DB8" },
+  { id: "weather", name: "天气", Icon: SunCloudIcon, color: "#FFB347" },
   { id: "phone", name: "电话", Icon: PhoneCallIcon, color: "#2ECC71" },
   { id: "music", name: "音乐", Icon: MusicNoteIcon, color: "#E91E63" },
+  { id: "tomato", name: "番茄计数器", Icon: TomatoIcon, color: "#FF6B6B" },
+  { id: "driftbottle", name: "漂流瓶", Icon: StarIcon, color: "#0066B3" },
 ];
 
 export default function PhoneTabs() {
@@ -142,6 +195,9 @@ export default function PhoneTabs() {
         {app === "meals" && <MealsApp onBack={() => setApp("home")} />}
         {app === "phone" && <PhoneApp onBack={() => setApp("home")} />}
         {app === "music" && <MusicApp onBack={() => setApp("home")} />}
+        {app === "weather" && <WeatherApp onBack={() => setApp("home")} />}
+        {app === "tomato" && <TomatoApp onBack={() => setApp("home")} />}
+        {app === "driftbottle" && <DriftBottleApp onBack={() => setApp("home")} />}
       </div>
 
       {/* Home 指示条 */}

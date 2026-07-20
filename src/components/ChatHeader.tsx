@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { Settings, Phone, Pencil, Vote, Hand, PhoneCall, StickyNote, Mail } from "lucide-react";
+import { Settings, Phone, Pencil, Vote, Hand, PhoneCall, StickyNote, Music, Palette } from "lucide-react";
 import { useAppStore } from "@/store/app";
 import ConvSwitchModal from "@/components/modals/ConvSwitchModal";
 import RPSModal from "@/components/modals/RPSModal";
 import PollModal from "@/components/modals/PollModal";
 import MemoModal from "@/components/modals/MemoModal";
-import MailboxModal from "@/components/modals/MailboxModal";
+import ThemePickerModal from "@/components/modals/ThemePickerModal";
 
 export default function ChatHeader() {
   const conversations = useAppStore((s) => s.conversations);
@@ -15,14 +15,17 @@ export default function ChatHeader() {
   const setPhoneOpen = useAppStore((s) => s.setPhoneOpen);
   const phoneOpen = useAppStore((s) => s.phoneOpen);
   const setSettingsOpen = useAppStore((s) => s.setSettingsOpen);
-  const openMailbox = useAppStore((s) => s.openMailbox);
   const startCall = useAppStore((s) => s.startCall);
+  const sendGroupListenTogether = useAppStore((s) => s.sendGroupListenTogether);
+  const songs = useAppStore((s) => s.songs);
+  const themeId = useAppStore((s) => s.beauty.themeId);
+  const isCuteMoe = themeId === "cute-moe";
 
   const [showConvModal, setShowConvModal] = useState(false);
   const [showRPSModal, setShowRPSModal] = useState(false);
   const [showPollModal, setShowPollModal] = useState(false);
   const [showMemoModal, setShowMemoModal] = useState(false);
-  const [showMailboxModal, setShowMailboxModal] = useState(false);
+  const [showThemePicker, setShowThemePicker] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
 
@@ -46,10 +49,10 @@ export default function ChatHeader() {
   return (
     <>
       <header
-        className="flex items-center justify-between border-b px-4 py-3 backdrop-blur md:px-8"
+        className="flex items-center justify-between border-b px-4 py-3 backdrop-blur md:px-8 cute-header"
         style={{
-          borderColor: "var(--card-border)",
-          background: "color-mix(in srgb, var(--bg) 80%, transparent)",
+          borderColor: isCuteMoe ? "transparent" : "var(--card-border)",
+          background: isCuteMoe ? "transparent" : "color-mix(in srgb, var(--bg) 80%, transparent)",
         }}
       >
         <div className="flex items-center gap-2">
@@ -126,25 +129,21 @@ export default function ChatHeader() {
               >
                 <StickyNote className="h-5 w-5" />
               </button>
-              <button
-                onClick={() => {
-                  if (contactId) {
-                    openMailbox(contactId);
-                    setShowMailboxModal(true);
-                  }
-                }}
-                className="flex h-10 w-10 items-center justify-center rounded-full border transition hover:scale-105"
-                style={{
-                  borderColor: "var(--card-border)",
-                  background: "var(--card)",
-                  color: "var(--text)",
-                }}
-                title="信箱"
-              >
-                <Mail className="h-5 w-5" />
-              </button>
             </>
           )}
+
+          <button
+            onClick={() => setShowThemePicker(true)}
+            className="flex h-10 w-10 items-center justify-center rounded-full border transition hover:scale-105"
+            style={{
+              borderColor: "var(--card-border)",
+              background: "var(--card)",
+              color: "var(--accent)",
+            }}
+            title="更换主题"
+          >
+            <Palette className="h-5 w-5" />
+          </button>
 
           <button
             onClick={() => setSettingsOpen(true)}
@@ -161,6 +160,24 @@ export default function ChatHeader() {
 
           {isGroup ? (
             <>
+              <button
+                onClick={() => {
+                  if (activeConversationId && songs.length > 0) {
+                    sendGroupListenTogether(activeConversationId);
+                  }
+                }}
+                disabled={songs.length === 0}
+                className="flex h-10 w-10 items-center justify-center rounded-full border transition hover:scale-105 disabled:opacity-40"
+                style={{
+                  borderColor: "var(--card-border)",
+                  background: "var(--card)",
+                  color: "var(--text)",
+                }}
+                title={songs.length === 0 ? "先去手机音乐添加歌曲" : "一起听歌"}
+              >
+                <Music className="h-5 w-5" />
+              </button>
+
               <button
                 onClick={() => setShowRPSModal(true)}
                 className="flex h-10 w-10 items-center justify-center rounded-full border transition hover:scale-105"
@@ -207,17 +224,11 @@ export default function ChatHeader() {
       <ConvSwitchModal isOpen={showConvModal} onClose={() => setShowConvModal(false)} />
       <RPSModal isOpen={showRPSModal} onClose={() => setShowRPSModal(false)} />
       <PollModal isOpen={showPollModal} onClose={() => setShowPollModal(false)} />
+      <ThemePickerModal isOpen={showThemePicker} onClose={() => setShowThemePicker(false)} />
       {contactId && (
         <MemoModal
           isOpen={showMemoModal}
           onClose={() => setShowMemoModal(false)}
-          contactId={contactId}
-        />
-      )}
-      {contactId && (
-        <MailboxModal
-          isOpen={showMailboxModal}
-          onClose={() => setShowMailboxModal(false)}
           contactId={contactId}
         />
       )}

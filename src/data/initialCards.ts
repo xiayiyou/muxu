@@ -76,6 +76,17 @@ export const INITIAL_CARDS: Record<CardModule, Card[]> = {
     { id: "ws5", name: "休息日", content: "今天不上班。", stamp: "假" },
   ],
 
+  workLocation: [
+    { id: "wl1", name: "公司办公室", content: "在公司工位上。", stamp: "公" },
+    { id: "wl2", name: "家里办公", content: "在家远程办公。", stamp: "家" },
+    { id: "wl3", name: "咖啡馆", content: "在咖啡馆办公。", stamp: "咖" },
+    { id: "wl4", name: "客户公司", content: "在客户这边。", stamp: "客" },
+    { id: "wl5", name: "会议室", content: "在会议室开会。", stamp: "会" },
+    { id: "wl6", name: "路上", content: "在出差/通勤路上。", stamp: "路" },
+    { id: "wl7", name: "图书馆", content: "在图书馆查资料。", stamp: "书" },
+    { id: "wl8", name: "奶茶店", content: "在奶茶店摸鱼办公。", stamp: "茶" },
+  ],
+
   travel: [
     { id: "t1", name: "在家", content: "宅在家里。", stamp: "家" },
     { id: "t2", name: "在公司", content: "工位上。", stamp: "公" },

@@ -15,6 +15,7 @@ export type CardModule =
   | "body"        // 身体状态
   | "workContent" // 工作内容
   | "workStatus"  // 工作状态
+  | "workLocation" // 工作地点
   | "travel"      // 出行
   | "breakfast"   // 早饭
   | "lunch"       // 午饭
@@ -26,6 +27,7 @@ export const MODULE_LABELS: Record<CardModule, string> = {
   body: "身体",
   workContent: "工作内容",
   workStatus: "工作状态",
+  workLocation: "工作地点",
   travel: "出行",
   breakfast: "早饭",
   lunch: "午饭",
@@ -36,6 +38,6 @@ export const MODULE_LABELS: Record<CardModule, string> = {
 export const MODULE_GROUPS: { label: string; modules: CardModule[] }[] = [
   { label: "对话", modules: ["chat", "mood"] },
   { label: "生活", modules: ["body", "travel"] },
-  { label: "工作", modules: ["workStatus", "workContent"] },
+  { label: "工作", modules: ["workStatus", "workContent", "workLocation"] },
   { label: "吃饭", modules: ["breakfast", "lunch", "dinner"] },
 ];

@@ -44,13 +44,13 @@ export default function ConvSwitchModal({ isOpen, onClose }: ConvSwitchModalProp
     <div className="fixed inset-0 z-[200] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div
-        className="relative w-[90%] max-w-md animate-popIn rounded-2xl border p-4 shadow-2xl"
+        className="relative w-[90%] max-w-md max-h-[85vh] flex flex-col animate-popIn rounded-2xl border p-4 shadow-2xl"
         style={{
           borderColor: "var(--card-border)",
           background: "var(--card)",
         }}
       >
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex shrink-0 items-center justify-between">
           <h2 className="text-lg font-bold" style={{ color: "var(--text)" }}>
             切换会话
           </h2>
@@ -63,7 +63,7 @@ export default function ConvSwitchModal({ isOpen, onClose }: ConvSwitchModalProp
           </button>
         </div>
 
-        <div className="space-y-2">
+        <div className="flex-1 overflow-y-auto fancy-scroll space-y-2">
           <button
             onClick={() => handleSelectConv(groupConversationId)}
             className={`flex w-full items-center gap-3 rounded-xl border p-3 transition hover:bg-black/5 ${
@@ -127,7 +127,7 @@ export default function ConvSwitchModal({ isOpen, onClose }: ConvSwitchModalProp
           })}
         </div>
 
-        <div className="mt-4 border-t pt-4" style={{ borderColor: "var(--card-border)" }}>
+        <div className="mt-4 shrink-0 border-t pt-4" style={{ borderColor: "var(--card-border)" }}>
           <div className="mb-2 flex items-center gap-2">
             <UserPlus className="h-4 w-4" style={{ color: "var(--text-soft)" }} />
             <span className="text-sm" style={{ color: "var(--text-soft)" }}>

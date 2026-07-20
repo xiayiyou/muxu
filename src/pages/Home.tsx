@@ -157,6 +157,69 @@ export default function Home() {
     return () => clearInterval(timer);
   }, [isPrivate, contactId]);
 
+  useEffect(() => {
+    if (!isPrivate || !contactId) return;
+
+    let lastWorkUpdateKey = "";
+
+    const checkWorkUpdate = () => {
+      const now = new Date();
+      const hour = now.getHours();
+      const today = now.toISOString().slice(0, 10);
+
+      // 四个时间点：6点、12点、18点、0点（凌晨）
+      const timePoints = [0, 6, 12, 18];
+      const currentPoint = timePoints.filter((t) => t <= hour).pop() || 0;
+      const updateKey = `${today}-${currentPoint}`;
+
+      if (updateKey === lastWorkUpdateKey) return;
+      lastWorkUpdateKey = updateKey;
+
+      const state = useAppStore.getState();
+      const currentContact = state.contacts.find((c) => c.id === contactId);
+      if (!currentContact) return;
+
+      // 随机抽取工作地点
+      const locationCard = state.pickRandomCard(contactId, "workLocation");
+      const contentCard = state.pickRandomCard(contactId, "workContent");
+
+      let newStatus: "working" | "resting" | "off" = "working";
+      if (currentPoint === 0) {
+        newStatus = "off"; // 凌晨是下班状态
+      } else if (currentPoint === 6) {
+        newStatus = Math.random() > 0.3 ? "working" : "resting";
+      } else if (currentPoint === 12) {
+        newStatus = "resting"; // 中午休息
+      } else if (currentPoint === 18) {
+        newStatus = Math.random() > 0.4 ? "off" : "working"; // 下午6点可能下班也可能加班
+      }
+
+      useAppStore.setState((s) => ({
+        contacts: s.contacts.map((c) =>
+          c.id === contactId
+            ? {
+                ...c,
+                status: {
+                  ...c.status,
+                  work: {
+                    ...c.status.work,
+                    status: newStatus,
+                    content: contentCard?.content || c.status.work.content,
+                    location: locationCard?.name || c.status.work.location,
+                    lastStatusChange: Date.now(),
+                  },
+                },
+              }
+            : c
+        ),
+      }));
+    };
+
+    const timer = setInterval(checkWorkUpdate, 60 * 1000);
+    checkWorkUpdate();
+    return () => clearInterval(timer);
+  }, [isPrivate, contactId]);
+
   if (!activeConv) {
     return (
       <div className="relative flex h-full flex-col">

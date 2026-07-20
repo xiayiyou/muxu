@@ -6,15 +6,17 @@ export type ViewSide = "me" | "her";
 export interface Message {
   id: string;
   sender: Sender;
-  type: "text" | "card" | "note" | "sticker" | "system" | "rps" | "poll" | "music";
+  type: "text" | "card" | "note" | "sticker" | "system" | "rps" | "poll" | "music" | "image";
   text?: string;
   card?: import("./card").Card;
   noteMood?: string;
   moodNote?: string;
   sticker?: string;
+  image?: string;
   timestamp: number;
   showMoodLabel?: boolean;
   mentionTarget?: string;
+  moodTag?: string;
   music?: { title: string; url: string };
   rps?: {
     challenger: string;
@@ -32,6 +34,11 @@ export interface Message {
     resolved: boolean;
   };
   systemText?: string;
+  quoteId?: string;
+  quoteText?: string;
+  quoteSender?: string;
+  recalled?: boolean;
+  isAutoInitiated?: boolean;
 }
 
 export interface MealRecord {
@@ -60,6 +67,15 @@ export interface Memo {
   timestamp: number;
 }
 
+export interface DriftBottle {
+  id: string;
+  contactId: string;
+  text: string;
+  from: "me" | string;
+  timestamp: number;
+  isRead: boolean;
+}
+
 export interface HerStatus {
   body: {
     temp: number;
@@ -80,6 +96,7 @@ export interface HerStatus {
   work: {
     status: "working" | "resting" | "off";
     content: string;
+    location: string;
     tasks: { id: string; title: string; done: boolean }[];
     overtime: boolean;
     progress: number;
@@ -109,6 +126,22 @@ export interface Contact {
 }
 
 export type ConversationType = "private" | "group";
+
+export interface TomatoThrow {
+  id: string;
+  throwerId: string;
+  targetId: string;
+  targetMsgId: string;
+  timestamp: number;
+  conversationId: string;
+  auto?: boolean;
+}
+
+export interface TomatoDailyStat {
+  date: string;
+  thrownByMe: number;
+  thrownAtMe: number;
+}
 
 export interface Conversation {
   id: string;
