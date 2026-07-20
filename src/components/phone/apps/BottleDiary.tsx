@@ -2,8 +2,12 @@ import { useState } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAppStore } from "@/store/app";
 
-export default function BottleDiary({ onBack }: { onBack: () => void }) {
-  const bottleDiary = useAppStore((s) => s.bottleDiary);
+const BASE = import.meta.env.BASE_URL;
+const img = (name: string) => `${BASE}driftbottle/${name}`;
+
+export default function BottleDiary({ onBack, contactId }: { onBack: () => void; contactId: string | null }) {
+  const bottleData = useAppStore((s) => contactId ? s.bottleData[contactId] : null);
+  const bottleDiary = bottleData?.diary || [];
   const [page, setPage] = useState(0);
   const PER_PAGE = 5;
   const totalPages = Math.ceil(bottleDiary.length / PER_PAGE) || 1;
@@ -32,9 +36,7 @@ export default function BottleDiary({ onBack }: { onBack: () => void }) {
       <div
         className="flex-1 overflow-y-auto fancy-scroll px-4 py-4"
         style={{
-          backgroundImage: "url(/driftbottle/diary.jpg)",
-          backgroundSize: "cover",
-          backgroundPosition: "center",
+          background: "linear-gradient(180deg, #F7FBFF 0%, #E8F4FC 100%)",
         }}
       >
         {bottleDiary.length === 0 ? (

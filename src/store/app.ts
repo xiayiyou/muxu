@@ -116,6 +116,33 @@ interface ConversationStore {
   sendGroupListenTogether: (conversationId: string, songIndex?: number) => void;
 }
 
+interface BottleData {
+  noteCards: { id: string; content: string }[];
+  whisperCards: { id: string; content: string }[];
+  replyCards: { id: string; content: string }[];
+  diary: { id: string; type: "star" | "ocean" | "letter"; content: string; reply?: string; timestamp: number }[];
+  letters: { id: string; content: string; font: string; fontSize: number; timestamp: number; receivedAt?: number; replyAt?: number; reply?: string }[];
+  starPicks: Record<string, { morning: boolean; noon: boolean; evening: boolean }>;
+}
+
+function createDefaultBottleData(): BottleData {
+  return {
+    noteCards: JSON.parse(JSON.stringify(DEFAULT_NOTE_CARDS)),
+    whisperCards: JSON.parse(JSON.stringify(DEFAULT_WHISPER_CARDS)),
+    replyCards: JSON.parse(JSON.stringify(DEFAULT_REPLY_CARDS)),
+    diary: [],
+    letters: [],
+    starPicks: {},
+  };
+}
+
+function getBottleData(data: Record<string, BottleData>, contactId: string): BottleData {
+  if (!data[contactId]) {
+    data[contactId] = createDefaultBottleData();
+  }
+  return data[contactId];
+}
+
 interface GlobalState {
   phoneOpen: boolean;
   settingsOpen: boolean;
@@ -127,36 +154,33 @@ interface GlobalState {
   callRecords: CallRecord[];
   memos: Memo[];
   driftBottles: DriftBottle[];
-  // 漂流瓶应用独立字卡库
-  bottleNoteCards: { id: string; content: string }[];
-  bottleWhisperCards: { id: string; content: string }[];
-  bottleReplyCards: { id: string; content: string }[];
-  // 漂流瓶日记
-  bottleDiary: { id: string; type: "star" | "ocean" | "letter"; content: string; reply?: string; timestamp: number }[];
-  // 漂流瓶已发送的信
-  bottleLetters: { id: string; content: string; font: string; fontSize: number; timestamp: number; receivedAt?: number; replyAt?: number; reply?: string }[];
-  // 漂流瓶星星领取记录（按日期）
-  bottleStarPicks: Record<string, { morning: boolean; noon: boolean; evening: boolean }>;
+  // 漂流瓶数据（按联系人ID独立存储）
+  bottleData: Record<string, BottleData>;
+  driftBottleOpen: boolean;
+  setDriftBottleOpen: (open: boolean) => void;
+  // 获取当前活动漂流瓶的联系人ID
+  getActiveBottleContactId: () => string | null;
   lastAutoMemoAt: number;
   lastAutoMailboxAt: number;
   lastAutoDriftBottleAt: number;
+  lastTravelUpdateAt: number;
   startCall: (contactId: string) => void;
   addMemo: (contactId: string, text: string) => void;
   addDriftBottle: (contactId: string, text: string) => void;
   openMailbox: (contactId: string) => void;
   markDriftBottleRead: (id: string) => void;
   // 漂流瓶字卡库操作
-  addBottleNoteCards: (cards: string[]) => void;
-  deleteBottleNoteCard: (id: string) => void;
-  addBottleWhisperCards: (cards: string[]) => void;
-  deleteBottleWhisperCard: (id: string) => void;
-  addBottleReplyCards: (cards: string[]) => void;
-  deleteBottleReplyCard: (id: string) => void;
+  addBottleNoteCards: (contactId: string, cards: string[]) => void;
+  deleteBottleNoteCard: (contactId: string, id: string) => void;
+  addBottleWhisperCards: (contactId: string, cards: string[]) => void;
+  deleteBottleWhisperCard: (contactId: string, id: string) => void;
+  addBottleReplyCards: (contactId: string, cards: string[]) => void;
+  deleteBottleReplyCard: (contactId: string, id: string) => void;
   // 漂流瓶拾取/写信
-  pickBottleStar: (content: string) => void;
-  pickBottleOcean: (content: string) => void;
-  replyBottleOcean: (id: string, reply: string) => void;
-  sendBottleLetter: (content: string, font: string, fontSize: number) => void;
+  pickBottleStar: (contactId: string, content: string) => void;
+  pickBottleOcean: (contactId: string, content: string) => void;
+  replyBottleOcean: (contactId: string, id: string, reply: string) => void;
+  sendBottleLetter: (contactId: string, content: string, font: string, fontSize: number) => void;
   showMemoBar: boolean;
   toggleMemoBar: () => void;
   incomingCall: { contactId: string; contactName: string; contactAvatar: string } | null;
@@ -396,16 +420,22 @@ export const useAppStore = create<
       callRecords: [],
       memos: [],
       driftBottles: [],
-      bottleNoteCards: DEFAULT_NOTE_CARDS,
-      bottleWhisperCards: DEFAULT_WHISPER_CARDS,
-      bottleReplyCards: DEFAULT_REPLY_CARDS,
-      bottleDiary: [],
-      bottleLetters: [],
-      bottleStarPicks: {},
+      bottleData: {},
+      driftBottleOpen: false,
+      setDriftBottleOpen: (v: boolean) => set({ driftBottleOpen: v }),
+      getActiveBottleContactId: () => {
+        const st = get();
+        const activeConv = st.conversations.find((c) => c.id === st.activeConversationId);
+        if (activeConv?.type === "private" && activeConv.memberIds.length > 0) {
+          return activeConv.memberIds[0];
+        }
+        return st.contacts[0]?.id || null;
+      },
       showMemoBar: false,
       lastAutoMemoAt: 0,
       lastAutoMailboxAt: 0,
       lastAutoDriftBottleAt: 0,
+      lastTravelUpdateAt: 0,
       toggleMemoBar: () => set((s) => ({ showMemoBar: !s.showMemoBar })),
       incomingCall: null,
       floatingPhone: false,
@@ -638,106 +668,162 @@ export const useAppStore = create<
       },
 
       // =========== 漂流瓶应用字卡库 ===========
-      addBottleNoteCards: (cards) =>
+      addBottleNoteCards: (contactId, cards) =>
         set((s) => {
-          const existing = new Set(s.bottleNoteCards.map((c) => c.content.trim()));
+          const data = { ...s.bottleData };
+          const bd = getBottleData(data, contactId);
+          const existing = new Set(bd.noteCards.map((c) => c.content.trim()));
           const toAdd = cards
             .map((c) => c.trim())
             .filter((c) => c && !existing.has(c) && !existing.add(c))
             .map((c) => ({ id: uid("bn"), content: c }));
-          return { bottleNoteCards: [...s.bottleNoteCards, ...toAdd] };
+          data[contactId] = { ...bd, noteCards: [...bd.noteCards, ...toAdd] };
+          return { bottleData: data };
         }),
-      deleteBottleNoteCard: (id) =>
-        set((s) => ({ bottleNoteCards: s.bottleNoteCards.filter((c) => c.id !== id) })),
-      addBottleWhisperCards: (cards) =>
+      deleteBottleNoteCard: (contactId, id) =>
         set((s) => {
-          const existing = new Set(s.bottleWhisperCards.map((c) => c.content.trim()));
+          const data = { ...s.bottleData };
+          const bd = getBottleData(data, contactId);
+          data[contactId] = { ...bd, noteCards: bd.noteCards.filter((c) => c.id !== id) };
+          return { bottleData: data };
+        }),
+      addBottleWhisperCards: (contactId, cards) =>
+        set((s) => {
+          const data = { ...s.bottleData };
+          const bd = getBottleData(data, contactId);
+          const existing = new Set(bd.whisperCards.map((c) => c.content.trim()));
           const toAdd = cards
             .map((c) => c.trim())
             .filter((c) => c && !existing.has(c) && !existing.add(c))
             .map((c) => ({ id: uid("bw"), content: c }));
-          return { bottleWhisperCards: [...s.bottleWhisperCards, ...toAdd] };
+          data[contactId] = { ...bd, whisperCards: [...bd.whisperCards, ...toAdd] };
+          return { bottleData: data };
         }),
-      deleteBottleWhisperCard: (id) =>
-        set((s) => ({ bottleWhisperCards: s.bottleWhisperCards.filter((c) => c.id !== id) })),
-      addBottleReplyCards: (cards) =>
+      deleteBottleWhisperCard: (contactId, id) =>
         set((s) => {
-          const existing = new Set(s.bottleReplyCards.map((c) => c.content.trim()));
+          const data = { ...s.bottleData };
+          const bd = getBottleData(data, contactId);
+          data[contactId] = { ...bd, whisperCards: bd.whisperCards.filter((c) => c.id !== id) };
+          return { bottleData: data };
+        }),
+      addBottleReplyCards: (contactId, cards) =>
+        set((s) => {
+          const data = { ...s.bottleData };
+          const bd = getBottleData(data, contactId);
+          const existing = new Set(bd.replyCards.map((c) => c.content.trim()));
           const toAdd = cards
             .map((c) => c.trim())
             .filter((c) => c && !existing.has(c) && !existing.add(c))
             .map((c) => ({ id: uid("br"), content: c }));
-          return { bottleReplyCards: [...s.bottleReplyCards, ...toAdd] };
+          data[contactId] = { ...bd, replyCards: [...bd.replyCards, ...toAdd] };
+          return { bottleData: data };
         }),
-      deleteBottleReplyCard: (id) =>
-        set((s) => ({ bottleReplyCards: s.bottleReplyCards.filter((c) => c.id !== id) })),
+      deleteBottleReplyCard: (contactId, id) =>
+        set((s) => {
+          const data = { ...s.bottleData };
+          const bd = getBottleData(data, contactId);
+          data[contactId] = { ...bd, replyCards: bd.replyCards.filter((c) => c.id !== id) };
+          return { bottleData: data };
+        }),
 
       // =========== 漂流瓶拾取/写信 ===========
-      pickBottleStar: (content) =>
-        set((s) => ({
-          bottleDiary: [
-            { id: uid("dstar"), type: "star" as const, content, timestamp: Date.now() },
-            ...s.bottleDiary,
-          ],
-        })),
-      pickBottleOcean: (content) =>
-        set((s) => ({
-          bottleDiary: [
-            { id: uid("docean"), type: "ocean" as const, content, timestamp: Date.now() },
-            ...s.bottleDiary,
-          ],
-        })),
-      replyBottleOcean: (id, reply) =>
-        set((s) => ({
-          bottleDiary: s.bottleDiary.map((d) =>
-            d.id === id ? { ...d, reply } : d
-          ),
-        })),
-      sendBottleLetter: (content, font, fontSize) => {
+      pickBottleStar: (contactId, content) =>
+        set((s) => {
+          const data = { ...s.bottleData };
+          const bd = getBottleData(data, contactId);
+          data[contactId] = {
+            ...bd,
+            diary: [
+              { id: uid("dstar"), type: "star" as const, content, timestamp: Date.now() },
+              ...bd.diary,
+            ],
+          };
+          return { bottleData: data };
+        }),
+      pickBottleOcean: (contactId, content) =>
+        set((s) => {
+          const data = { ...s.bottleData };
+          const bd = getBottleData(data, contactId);
+          data[contactId] = {
+            ...bd,
+            diary: [
+              { id: uid("docean"), type: "ocean" as const, content, timestamp: Date.now() },
+              ...bd.diary,
+            ],
+          };
+          return { bottleData: data };
+        }),
+      replyBottleOcean: (contactId, id, reply) =>
+        set((s) => {
+          const data = { ...s.bottleData };
+          const bd = getBottleData(data, contactId);
+          data[contactId] = {
+            ...bd,
+            diary: bd.diary.map((d) => (d.id === id ? { ...d, reply } : d)),
+          };
+          return { bottleData: data };
+        }),
+      sendBottleLetter: (contactId, content, font, fontSize) => {
         const letterId = uid("bletter");
         const now = Date.now();
-        set((s) => ({
-          bottleLetters: [
-            ...s.bottleLetters,
-            { id: letterId, content, font, fontSize, timestamp: now },
-          ],
-          bottleDiary: [
-            { id: uid("dletter"), type: "letter" as const, content, timestamp: now },
-            ...s.bottleDiary,
-          ],
-        }));
+        set((s) => {
+          const data = { ...s.bottleData };
+          const bd = getBottleData(data, contactId);
+          data[contactId] = {
+            ...bd,
+            letters: [...bd.letters, { id: letterId, content, font, fontSize, timestamp: now }],
+            diary: [
+              { id: uid("dletter"), type: "letter" as const, content, timestamp: now },
+              ...bd.diary,
+            ],
+          };
+          return { bottleData: data };
+        });
 
         // 30分钟到1小时后，对方收到漂流瓶
         const receiveDelay = randRange(30 * 60 * 1000, 60 * 60 * 1000);
         window.setTimeout(() => {
-          set((s) => ({
-            bottleLetters: s.bottleLetters.map((l) =>
-              l.id === letterId ? { ...l, receivedAt: Date.now() } : l
-            ),
-          }));
+          set((s) => {
+            const data = { ...s.bottleData };
+            const bd = getBottleData(data, contactId);
+            data[contactId] = {
+              ...bd,
+              letters: bd.letters.map((l) =>
+                l.id === letterId ? { ...l, receivedAt: Date.now() } : l
+              ),
+            };
+            return { bottleData: data };
+          });
 
           // 2-3小时后抽取回信字卡回复
           const replyDelay = randRange(2 * 60 * 60 * 1000, 3 * 60 * 60 * 1000);
           window.setTimeout(() => {
             const st = get();
-            const replyCards = st.bottleReplyCards;
+            const bd = getBottleData(st.bottleData, contactId);
+            const replyCards = bd.replyCards;
             if (replyCards.length === 0) return;
             const replyCount = Math.floor(Math.random() * 4) + 3; // 3-6条
             const shuffled = [...replyCards].sort(() => Math.random() - 0.5);
             const selected = shuffled.slice(0, Math.min(replyCount, shuffled.length));
             const replyText = selected.map((c) => c.content).join("\n\n---\n\n");
-            set((s) => ({
-              bottleLetters: s.bottleLetters.map((l) =>
-                l.id === letterId
-                  ? { ...l, replyAt: Date.now(), reply: replyText }
-                  : l
-              ),
-              bottleDiary: s.bottleDiary.map((d) =>
-                d.type === "letter" && d.content === content && !d.reply
-                  ? { ...d, reply: replyText }
-                  : d
-              ),
-            }));
+            set((s) => {
+              const data = { ...s.bottleData };
+              const bd2 = getBottleData(data, contactId);
+              data[contactId] = {
+                ...bd2,
+                letters: bd2.letters.map((l) =>
+                  l.id === letterId
+                    ? { ...l, replyAt: Date.now(), reply: replyText }
+                    : l
+                ),
+                diary: bd2.diary.map((d) =>
+                  d.type === "letter" && d.content === content && !d.reply
+                    ? { ...d, reply: replyText }
+                    : d
+                ),
+              };
+              return { bottleData: data };
+            });
           }, replyDelay);
         }, receiveDelay);
       },
@@ -1294,6 +1380,21 @@ export const useAppStore = create<
 
           const sendNextReply = (index: number) => {
             if (index >= replyCount) {
+              if (Math.random() < 0.05) {
+                const state = get();
+                const contact = state.contacts.find((c) => c.id === contactId);
+                if (contact && !state.incomingCall && !state.activeCall) {
+                  window.setTimeout(() => {
+                    useAppStore.setState({
+                      incomingCall: {
+                        contactId: contact.id,
+                        contactName: contact.name,
+                        contactAvatar: contact.avatar,
+                      },
+                    });
+                  }, randRange(3000, 8000));
+                }
+              }
               return;
             }
 
@@ -2138,12 +2239,7 @@ export const useAppStore = create<
         activeCardLibContactId: state.activeCardLibContactId,
         musicCurrentIndex: state.musicCurrentIndex,
         tomatoStats: state.tomatoStats,
-        bottleNoteCards: state.bottleNoteCards,
-        bottleWhisperCards: state.bottleWhisperCards,
-        bottleReplyCards: state.bottleReplyCards,
-        bottleDiary: state.bottleDiary,
-        bottleLetters: state.bottleLetters,
-        bottleStarPicks: state.bottleStarPicks,
+        bottleData: state.bottleData,
       }),
       onRehydrateStorage: () => (state: any) => {
         if (!state) return;
@@ -2196,12 +2292,8 @@ export const useAppStore = create<
         if (state.lastAutoMemoAt === undefined) state.lastAutoMemoAt = 0;
         if (state.lastAutoMailboxAt === undefined) state.lastAutoMailboxAt = 0;
         if (!state.tomatoStats) state.tomatoStats = {};
-        if (!state.bottleNoteCards) state.bottleNoteCards = DEFAULT_NOTE_CARDS;
-        if (!state.bottleWhisperCards) state.bottleWhisperCards = DEFAULT_WHISPER_CARDS;
-        if (!state.bottleReplyCards) state.bottleReplyCards = DEFAULT_REPLY_CARDS;
-        if (!state.bottleDiary) state.bottleDiary = [];
-        if (!state.bottleLetters) state.bottleLetters = [];
-        if (!state.bottleStarPicks) state.bottleStarPicks = {};
+        if (!state.bottleData) state.bottleData = {};
+        if (state.lastTravelUpdateAt === undefined) state.lastTravelUpdateAt = 0;
 
         const setupAutoActions = () => {
           const minHours = 3;
@@ -2241,6 +2333,58 @@ export const useAppStore = create<
           }, delay);
         };
         setupAutoActions();
+
+        const setupTravelUpdate = () => {
+          const minHours = 1;
+          const maxHours = 3;
+          const lastAt = useAppStore.getState().lastTravelUpdateAt || 0;
+          const now = Date.now();
+          const minInterval = minHours * 60 * 60 * 1000;
+          const maxInterval = maxHours * 60 * 60 * 1000;
+
+          let delay: number;
+          if (lastAt === 0) {
+            delay = Math.random() * (maxInterval - minInterval) + minInterval;
+          } else {
+            const elapsed = now - lastAt;
+            const randomInterval = Math.random() * (maxInterval - minInterval) + minInterval;
+            const remaining = randomInterval - elapsed;
+            delay = Math.max(remaining, minInterval / 2);
+          }
+
+          window.setTimeout(() => {
+            const store = useAppStore.getState();
+            store.contacts.forEach((contact) => {
+              const travelCards = contact.cards.travel;
+              if (travelCards.length > 0) {
+                const randomCard = travelCards[Math.floor(Math.random() * travelCards.length)];
+                const weathers = ["晴", "多云", "阴", "小雨", "微风", "晴转多云", "多云转阴"];
+                const temps = [18, 20, 22, 24, 26, 28, 19, 21, 23, 25];
+                useAppStore.setState((s) => ({
+                  contacts: s.contacts.map((c) =>
+                    c.id === contact.id
+                      ? {
+                          ...c,
+                          status: {
+                            ...c.status,
+                            travel: {
+                              ...c.status.travel,
+                              location: randomCard.content,
+                              weather: weathers[Math.floor(Math.random() * weathers.length)],
+                              temperature: temps[Math.floor(Math.random() * temps.length)],
+                            },
+                          },
+                        }
+                      : c
+                  ),
+                  lastTravelUpdateAt: Date.now(),
+                }));
+              }
+            });
+            setupTravelUpdate();
+          }, delay);
+        };
+        setupTravelUpdate();
 
         const setupMailboxSend = () => {
           const minHours = 8;

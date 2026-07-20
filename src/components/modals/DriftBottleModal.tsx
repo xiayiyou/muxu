@@ -1,183 +1,499 @@
-import React, { useState, useMemo, useEffect } from "react";
-import { X, Send, Waves } from "lucide-react";
+import { useState, useMemo, useCallback } from "react";
+import { X, Book, Library, Mail } from "lucide-react";
 import { useAppStore } from "@/store/app";
+import BottleCardLibrary from "@/components/phone/apps/BottleCardLibrary";
+import BottleDiary from "@/components/phone/apps/BottleDiary";
+import BottleLetterWriter from "@/components/phone/apps/BottleLetterWriter";
 
-interface DriftBottleModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  contactId: string;
+const BASE = import.meta.env.BASE_URL;
+const img = (name: string) => `${BASE}driftbottle/${name}`;
+
+interface StarItem {
+  id: string;
+  x: number;
+  y: number;
+  size: number;
 }
 
-export default function DriftBottleModal({ isOpen, onClose, contactId }: DriftBottleModalProps) {
-  const driftBottles = useAppStore((s) => s.driftBottles);
-  const contacts = useAppStore((s) => s.contacts);
-  const addDriftBottle = useAppStore((s) => s.addDriftBottle);
-  const markDriftBottleRead = useAppStore((s) => s.markDriftBottleRead);
-  const myName = useAppStore((s) => s.beauty.myName);
+interface OceanItem {
+  id: string;
+  x: number;
+  y: number;
+  type: "coral" | "pearl" | "shell" | "wave";
+}
 
-  const [inputText, setInputText] = useState("");
+function generateNonOverlapping(count: number, areaWidth: number, areaHeight: number, minDist: number): { x: number; y: number }[] {
+  const positions: { x: number; y: number }[] = [];
+  let attempts = 0;
+  const maxAttempts = count * 30;
+  while (positions.length < count && attempts < maxAttempts) {
+    attempts++;
+    const x = Math.random() * (areaWidth - 40) + 20;
+    const y = Math.random() * (areaHeight - 40) + 20;
+    const ok = positions.every((p) => Math.hypot(p.x - x, p.y - y) >= minDist);
+    if (ok) positions.push({ x, y });
+  }
+  while (positions.length < count) {
+    positions.push({
+      x: Math.random() * (areaWidth - 40) + 20,
+      y: Math.random() * (areaHeight - 40) + 20,
+    });
+  }
+  return positions;
+}
 
-  const contact = useMemo(
-    () => contacts.find((c) => c.id === contactId),
-    [contacts, contactId]
-  );
+function getTodayKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
-  const bottles = useMemo(() => {
-    return driftBottles
-      .filter((b) => b.contactId === contactId)
-      .sort((a, b) => a.timestamp - b.timestamp);
-  }, [driftBottles, contactId]);
+function getCurrentSlot(): "morning" | "noon" | "evening" {
+  const h = new Date().getHours();
+  if (h < 10) return "morning";
+  if (h < 15) return "noon";
+  return "evening";
+}
 
-  useEffect(() => {
-    if (isOpen) {
-      bottles.forEach((b) => {
-        if (!b.isRead) {
-          markDriftBottleRead(b.id);
-        }
-      });
+function getNextSlotTime(): string {
+  const h = new Date().getHours();
+  if (h < 10) return "10:00";
+  if (h < 15) return "15:00";
+  return "明天 06:00";
+}
+
+export default function DriftBottleModal() {
+  const isOpen = useAppStore((s) => s.driftBottleOpen);
+  const onClose = () => useAppStore.getState().setDriftBottleOpen(false);
+  const contactId = useAppStore((s) => s.getActiveBottleContactId());
+
+  const bottleData = useAppStore((s) => contactId ? s.bottleData[contactId] : null);
+  const bottleNoteCards = bottleData?.noteCards || [];
+  const bottleWhisperCards = bottleData?.whisperCards || [];
+  const bottleStarPicks = bottleData?.starPicks || {};
+  const bottleLetters = bottleData?.letters || [];
+  const bottleDiary = bottleData?.diary || [];
+  const pickBottleStar = useAppStore((s) => s.pickBottleStar);
+  const pickBottleOcean = useAppStore((s) => s.pickBottleOcean);
+
+  const [view, setView] = useState<"main" | "library" | "diary" | "letters">("main");
+  const [showLetter, setShowLetter] = useState(false);
+  const [pickedNote, setPickedNote] = useState<string | null>(null);
+  const [pickedWhisper, setPickedWhisper] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const today = getTodayKey();
+  const todayPicks = bottleStarPicks[today] || { morning: false, noon: false, evening: false };
+
+  const starCountToday = (todayPicks.morning ? 1 : 0) + (todayPicks.noon ? 1 : 0) + (todayPicks.evening ? 1 : 0);
+  const maxStarCount = 3;
+
+  const oceanCountToday = useMemo(() => {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    return bottleDiary.filter(
+      (d) => d.type === "ocean" && d.timestamp >= todayStart.getTime()
+    ).length;
+  }, [bottleDiary]);
+
+  const availableStars = useMemo(() => {
+    const slot = getCurrentSlot();
+    let count = 0;
+    if (slot === "morning" && !todayPicks.morning) count++;
+    if ((slot === "noon" || slot === "evening") && !todayPicks.morning) count++;
+    if (slot === "noon" && !todayPicks.noon) count++;
+    if (slot === "evening" && !todayPicks.noon) count++;
+    if (slot === "evening" && !todayPicks.evening) count++;
+    return Math.min(count, 3);
+  }, [todayPicks]);
+
+  const stars = useMemo<StarItem[]>(() => {
+    const count = Math.max(0, Math.min(availableStars, 4));
+    const positions = generateNonOverlapping(count, 100, 100, 30);
+    return positions.map((p, i) => ({
+      id: `star_${refreshKey}_${i}`,
+      x: p.x,
+      y: p.y * 0.4 + 8,
+      size: 44 + Math.random() * 20,
+    }));
+  }, [availableStars, refreshKey]);
+
+  const oceanItems = useMemo<OceanItem[]>(() => {
+    const count = Math.floor(Math.random() * 5) + 2;
+    const positions = generateNonOverlapping(count, 100, 100, 25);
+    const types: OceanItem["type"][] = ["coral", "pearl", "shell", "wave"];
+    return positions.map((p, i) => ({
+      id: `ocean_${refreshKey}_${i}`,
+      x: p.x,
+      y: 72 + p.y * 0.28,
+      type: types[Math.floor(Math.random() * types.length)],
+    }));
+  }, [refreshKey]);
+
+  const oceanImages: Record<OceanItem["type"], string> = {
+    coral: img("coral.png"),
+    pearl: img("pearl.png"),
+    shell: img("shell.png"),
+    wave: img("wave.png"),
+  };
+
+  const handleStarClick = (starId: string) => {
+    if (!contactId || bottleNoteCards.length === 0) return;
+    const card = bottleNoteCards[Math.floor(Math.random() * bottleNoteCards.length)];
+    pickBottleStar(contactId, card.content);
+    setPickedNote(card.content);
+
+    const slot = getCurrentSlot();
+    const newPicks = { ...todayPicks };
+    if (slot === "morning" && !newPicks.morning) newPicks.morning = true;
+    else if (slot === "noon" && !newPicks.noon) newPicks.noon = true;
+    else if (slot === "evening" && !newPicks.evening) newPicks.evening = true;
+    else {
+      if (!newPicks.morning) newPicks.morning = true;
+      else if (!newPicks.noon) newPicks.noon = true;
+      else if (!newPicks.evening) newPicks.evening = true;
     }
-  }, [isOpen, bottles, markDriftBottleRead]);
+    useAppStore.setState((s) => {
+      const data = { ...s.bottleData };
+      const bd = data[contactId] || { noteCards: [], whisperCards: [], replyCards: [], diary: [], letters: [], starPicks: {} };
+      data[contactId] = { ...bd, starPicks: { ...bd.starPicks, [today]: newPicks } };
+      return { bottleData: data };
+    });
 
-  const formatTime = (timestamp: number) => {
-    const date = new Date(timestamp);
-    const month = date.getMonth() + 1;
-    const day = date.getDate();
-    const hours = String(date.getHours()).padStart(2, "0");
-    const minutes = String(date.getMinutes()).padStart(2, "0");
-    return `${month}月${day}日 ${hours}:${minutes}`;
+    setTimeout(() => {
+      setPickedNote(null);
+      setRefreshKey((k) => k + 1);
+    }, 2500);
   };
 
-  const getSenderName = (from: string) => {
-    if (from === "me") return myName || "我";
-    return contact?.name || "对方";
+  const handleOceanClick = (item: OceanItem) => {
+    if (!contactId || bottleWhisperCards.length === 0) return;
+    const card = bottleWhisperCards[Math.floor(Math.random() * bottleWhisperCards.length)];
+    pickBottleOcean(contactId, card.content);
+    setPickedWhisper(card.content);
+    setTimeout(() => {
+      setPickedWhisper(null);
+      setRefreshKey((k) => k + 1);
+    }, 3000);
   };
 
-  const handleSubmit = () => {
-    const text = inputText.trim();
-    if (!text) return;
-    addDriftBottle(contactId, text);
-    setInputText("");
+  const handleEnvelopeClick = () => {
+    setShowLetter(true);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      handleSubmit();
-    }
-  };
+  const pendingLetters = bottleLetters.filter((l) => !l.receivedAt);
+  const receivedLetters = bottleLetters.filter((l) => l.receivedAt && !l.replyAt);
+  const repliedLetters = bottleLetters.filter((l) => l.replyAt);
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div
-        className="relative flex w-[90%] max-w-sm flex-col animate-popIn rounded-2xl border shadow-2xl overflow-hidden"
-        style={{
-          borderColor: "rgba(0, 100, 180, 0.3)",
-          background: "linear-gradient(180deg, #E8F4FC 0%, #D0E8F5 100%)",
-          maxHeight: "80vh",
-          height: "28rem",
-        }}
-      >
-        <div className="flex items-center justify-between border-b px-4 py-3" style={{ borderColor: "rgba(0, 100, 180, 0.2)" }}>
-          <div className="flex items-center gap-2">
-            <Waves className="h-5 w-5" style={{ color: "#0066B3" }} />
-            <h2 className="text-lg font-bold" style={{ color: "#003366" }}>
-              漂流瓶
-            </h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-black/10"
-            style={{ color: "#003366" }}
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div
-          className="flex-1 overflow-y-auto fancy-scroll px-4 py-3"
-          style={{
-            background: "linear-gradient(180deg, rgba(232, 244, 252, 0.5) 0%, rgba(208, 232, 245, 0.5) 100%)",
-          }}
-        >
-          {bottles.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center gap-2" style={{ color: "#004488" }}>
-              <Waves className="h-10 w-10 opacity-30" />
-              <div className="text-sm">还没有漂流瓶</div>
-              <div className="text-xs opacity-70">扔一个瓶子试试吧</div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {bottles.map((bottle) => {
-                const isMe = bottle.from === "me";
-                return (
-                  <div
-                    key={bottle.id}
-                    className={`flex ${isMe ? "justify-end" : "justify-start"}`}
-                  >
-                    <div
-                      className="max-w-[80%] rounded-2xl px-4 py-2 shadow-sm"
-                      style={{
-                        background: isMe
-                          ? "linear-gradient(135deg, #66B2FF 0%, #3388DD 100%)"
-                          : "linear-gradient(135deg, #FFFFFF 0%, #F0F8FF 100%)",
-                        border: isMe ? "none" : "1px solid rgba(0, 100, 180, 0.2)",
-                        color: isMe ? "#FFFFFF" : "#003366",
-                      }}
-                    >
-                      {!isMe && (
-                        <div className="mb-1 text-xs font-medium" style={{ color: "#0066B3" }}>
-                          {getSenderName(bottle.from)}
-                        </div>
-                      )}
-                      <p className="whitespace-pre-line text-sm leading-relaxed">
-                        {bottle.text}
-                      </p>
-                      <div
-                        className={`mt-1 text-[10px] ${isMe ? "text-white/70" : "text-[#0066B3]/60"}`}
-                      >
-                        {formatTime(bottle.timestamp)}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        <div
-          className="flex items-center gap-2 border-t px-4 py-3"
-          style={{
-            borderColor: "rgba(0, 100, 180, 0.2)",
-            background: "rgba(255, 255, 255, 0.6)",
-          }}
-        >
-          <input
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="扔一个漂流瓶..."
-            className="flex-1 rounded-xl border px-3 py-2 text-sm focus:outline-none"
-            style={{
-              borderColor: "rgba(0, 100, 180, 0.3)",
-              background: "#FFFFFF",
-              color: "#003366",
-            }}
-          />
-          <button
-            onClick={handleSubmit}
-            disabled={!inputText.trim()}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition disabled:opacity-40"
-            style={{
-              background: "linear-gradient(135deg, #0066B3 0%, #004488 100%)",
-            }}
-          >
-            <Send className="h-4 w-4" style={{ color: "#FFFFFF" }} />
-          </button>
+  if (view === "library") {
+    return (
+      <div className="fixed inset-0 z-[300] overflow-auto" style={{ background: "linear-gradient(180deg, #E8F4FC 0%, #D0E8F5 100%)" }}>
+        <div className="mx-auto max-w-md">
+          <BottleCardLibrary onBack={() => setView("main")} contactId={contactId} />
         </div>
       </div>
+    );
+  }
+  if (view === "diary") {
+    return (
+      <div className="fixed inset-0 z-[300] overflow-auto" style={{ background: "linear-gradient(180deg, #E8F4FC 0%, #D0E8F5 100%)" }}>
+        <div className="mx-auto max-w-md">
+          <BottleDiary onBack={() => setView("main")} contactId={contactId} />
+        </div>
+      </div>
+    );
+  }
+  if (showLetter) {
+    return <BottleLetterWriter onClose={() => setShowLetter(false)} contactId={contactId} />;
+  }
+
+  const allStarsDone = starCountToday >= maxStarCount;
+  const nextSlotTime = getNextSlotTime();
+
+  return (
+    <div className="fixed inset-0 z-[300] overflow-hidden">
+      <div
+        className="absolute inset-0"
+        style={{
+          backgroundImage: `url(${img("bg.jpg")})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+        }}
+      />
+
+      <div className="pointer-events-none absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(26,58,107,0.15) 0%, rgba(26,58,107,0.05) 40%, rgba(26,58,107,0.25) 100%)" }} />
+
+      <div className="pointer-events-none absolute top-0 left-0 right-0 z-20 px-5 pt-6 pb-4">
+        <div className="flex items-start justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-white/40 bg-white/20 backdrop-blur-md">
+              <span className="text-2xl">⭐</span>
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-white drop-shadow-lg" style={{ fontFamily: "'Songti SC', 'STSong', serif" }}>
+                星海漂流瓶
+              </h1>
+              <p className="mt-0.5 text-sm text-white/80 drop-shadow">
+                点击星星与海洋小物，拾起给你的讯息
+              </p>
+            </div>
+          </div>
+          <div className="pointer-events-auto flex items-center gap-2">
+            <button
+              onClick={() => setView("letters")}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/40 bg-white/20 backdrop-blur-sm transition hover:bg-white/30 active:scale-95"
+              title="信件"
+            >
+              <Mail className="h-5 w-5 text-white" />
+            </button>
+            <button
+              onClick={() => setView("diary")}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/40 bg-white/20 backdrop-blur-sm transition hover:bg-white/30 active:scale-95"
+              title="日记本"
+            >
+              <Book className="h-5 w-5 text-white" />
+            </button>
+            <button
+              onClick={() => setView("library")}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/40 bg-white/20 backdrop-blur-sm transition hover:bg-white/30 active:scale-95"
+              title="字卡库"
+            >
+              <Library className="h-5 w-5 text-white" />
+            </button>
+            <button
+              onClick={onClose}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/40 bg-white/20 backdrop-blur-sm transition hover:bg-white/30 active:scale-95"
+            >
+              <X className="h-5 w-5 text-white" />
+            </button>
+          </div>
+        </div>
+
+        <div className="pointer-events-auto mt-4 flex items-center gap-3 rounded-full border border-white/30 bg-white/20 px-4 py-2.5 backdrop-blur-md">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">⭐</span>
+            <span className="text-sm font-medium text-white">
+              今日 <span className="text-yellow-300 font-bold">{starCountToday}</span> / {maxStarCount}
+            </span>
+          </div>
+          <div className="h-4 w-px bg-white/30" />
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🌊</span>
+            <span className="text-sm font-medium text-white">
+              海 今日 <span className="text-cyan-300 font-bold">{oceanCountToday}</span> 个
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="absolute top-28 left-0 right-0 z-30" style={{ height: "30%", pointerEvents: "none" }}>
+        {stars.map((star) => (
+          <button
+            key={star.id}
+            onClick={() => handleStarClick(star.id)}
+            className="absolute animate-twinkle transition-transform hover:scale-125 active:scale-90"
+            style={{
+              left: `${star.x}%`,
+              top: `${star.y}%`,
+              width: star.size,
+              height: star.size,
+              transform: "translate(-50%, -50%)",
+              pointerEvents: "auto",
+              zIndex: 40,
+            }}
+          >
+            <img src={img("star.png")} alt="star" className="h-full w-full object-contain drop-shadow-[0_0_8px_rgba(255,230,100,0.8)]" />
+          </button>
+        ))}
+      </div>
+
+      <div className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
+        <button
+          onClick={handleEnvelopeClick}
+          className="group transition-transform hover:scale-110 active:scale-95"
+          title="写信塞入漂流瓶"
+        >
+          <img src={img("envelope.png")} alt="envelope" className="h-28 w-28 object-contain drop-shadow-2xl transition group-hover:drop-shadow-[0_0_20px_rgba(255,255,255,0.6)]" />
+          <div className="mt-2 text-center text-sm font-medium text-white drop-shadow-lg">
+            点击写信，让漂流瓶带走
+          </div>
+        </button>
+
+      </div>
+
+      <div className="absolute bottom-24 left-0 right-0 z-10" style={{ height: "25%", pointerEvents: "none" }}>
+        {oceanItems.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => handleOceanClick(item)}
+            className="absolute transition-transform hover:scale-125 active:scale-90"
+            style={{
+              left: `${item.x}%`,
+              top: `${item.y}%`,
+              width: 48,
+              height: 48,
+              transform: "translate(-50%, -50%)",
+              pointerEvents: "auto",
+            }}
+          >
+            <img src={oceanImages[item.type]} alt={item.type} className="h-full w-full object-contain drop-shadow-lg" />
+          </button>
+        ))}
+      </div>
+
+      <div className="pointer-events-none absolute bottom-6 left-0 right-0 z-20 px-5">
+        <div className="pointer-events-auto flex items-center justify-center">
+          <div className="flex items-center gap-2 rounded-full border border-white/30 bg-white/20 px-5 py-2.5 backdrop-blur-md">
+            {allStarsDone ? (
+              <span className="text-sm text-white/90">今日已收集完毕，明天再来吧</span>
+            ) : (
+              <span className="text-sm text-white/90">
+                下一段星星 {nextSlotTime} 开启 · 今日已拾起 {oceanCountToday} 个海洋小物
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {pickedNote && (
+        <div className="absolute left-1/2 top-[35%] z-30 w-[min(340px,85%)] -translate-x-1/2 -translate-y-1/2 animate-popIn rounded-2xl bg-white/95 p-6 shadow-2xl backdrop-blur">
+          <div className="mb-2 text-center text-3xl">⭐</div>
+          <div className="text-center text-base font-medium leading-relaxed" style={{ color: "#1a3a6b", fontFamily: "'Songti SC', serif" }}>
+            {pickedNote}
+          </div>
+        </div>
+      )}
+
+      {pickedWhisper && (
+        <div className="absolute left-1/2 top-1/2 z-30 w-[min(340px,85%)] -translate-x-1/2 -translate-y-1/2 animate-popIn rounded-2xl bg-white/95 p-6 shadow-2xl backdrop-blur">
+          <div className="mb-2 text-center text-3xl">🐚</div>
+          <div className="text-center text-sm leading-relaxed" style={{ color: "#1a3a6b", fontFamily: "'Kaiti SC', serif" }}>
+            {pickedWhisper}
+          </div>
+        </div>
+      )}
+
+      {view === "letters" && (
+        <div className="absolute inset-0 z-40 flex flex-col" style={{ background: "linear-gradient(180deg, #D6EBF8 0%, #B8DBF0 100%)" }}>
+          <div className="flex items-center justify-between border-b px-4 py-3" style={{ borderColor: "rgba(26,58,107,0.15)" }}>
+            <button onClick={() => setView("main")} className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-black/10" style={{ color: "#1a3a6b" }}>
+              <X className="h-5 w-5" />
+            </button>
+            <h2 className="text-lg font-bold" style={{ color: "#1a3a6b" }}>
+              漂流瓶信件 · {bottleLetters.length} 封
+            </h2>
+            <button
+              onClick={() => setShowLetter(true)}
+              className="flex items-center gap-1 rounded-full px-4 py-1.5 text-sm font-bold text-white shadow-lg transition active:scale-95"
+              style={{ background: "linear-gradient(135deg, #3A7CA5 0%, #1a3a6b 100%)" }}
+            >
+              ✎ 写新信
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto fancy-scroll p-4 space-y-4">
+            {bottleLetters.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-3 py-20">
+                <div className="text-5xl opacity-40">✉️</div>
+                <div className="text-sm" style={{ color: "#1a3a6b80" }}>还没有寄出的信</div>
+                <button
+                  onClick={() => setShowLetter(true)}
+                  className="rounded-full px-4 py-2 text-sm font-medium text-white"
+                  style={{ background: "#1a3a6b" }}
+                >
+                  写第一封信
+                </button>
+              </div>
+            ) : (
+              bottleLetters.map((letter) => (
+                <div key={letter.id} className="rounded-2xl bg-white shadow-md overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-2 border-b" style={{ borderColor: "#f0f0f0" }}>
+                    <span className="text-sm font-medium" style={{ color: "#1a3a6b" }}>我写给TA</span>
+                    <span className="text-xs" style={{ color: "#888" }}>
+                      {new Date(letter.timestamp).toLocaleDateString("zh-CN", { month: "long", day: "numeric" })}
+                      {" "}
+                      {new Date(letter.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </div>
+                  <div
+                    className="relative p-5"
+                    style={{
+                      backgroundImage: `url(${img("letter.jpg")})`,
+                      backgroundSize: "cover",
+                      backgroundPosition: "center",
+                      minHeight: "200px",
+                    }}
+                  >
+                    <div className="relative z-10 whitespace-pre-line text-center leading-loose"
+                      style={{
+                        fontFamily: letter.font || "'Kaiti SC', serif",
+                        fontSize: `${letter.fontSize || 16}px`,
+                        color: "#1a3a6b",
+                      }}
+                    >
+                      {letter.content}
+                    </div>
+                    <div className="pointer-events-none absolute inset-0" style={{ boxShadow: "inset 0 0 60px rgba(255,255,255,0.3)" }} />
+                  </div>
+                  <div className="space-y-1.5 px-4 py-2.5 border-t" style={{ borderColor: "#f0f0f0" }}>
+                    <div className="flex items-center gap-1 text-xs" style={{ color: "#666" }}>
+                      <span>📤</span>
+                      <span>发出 · {new Date(letter.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</span>
+                    </div>
+                    {letter.receivedAt && (
+                      <div className="flex items-center gap-1 text-xs" style={{ color: "#27ae60" }}>
+                        <span>✓</span>
+                        <span>
+                          对方已收到 · {new Date(letter.receivedAt).toLocaleDateString("zh-CN", { month: "long", day: "numeric" })} {new Date(letter.receivedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+                    )}
+                    {letter.replyAt && letter.reply && (
+                      <div className="flex items-center gap-1 text-xs" style={{ color: "#3A7CA5" }}>
+                        <span>💌</span>
+                        <span>
+                          收到回信 · {new Date(letter.replyAt).toLocaleDateString("zh-CN", { month: "long", day: "numeric" })} {new Date(letter.replyAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+                    )}
+                    {!letter.receivedAt && (
+                      <div className="flex items-center gap-1 text-xs" style={{ color: "#999" }}>
+                        <span>⏳</span>
+                        <span>漂流中，预计几小时后对方收到</span>
+                      </div>
+                    )}
+                    {letter.receivedAt && !letter.replyAt && (
+                      <div className="flex items-center gap-1 text-xs" style={{ color: "#999" }}>
+                        <span>⏳</span>
+                        <span>等待对方回信中...</span>
+                      </div>
+                    )}
+                  </div>
+                  {letter.replyAt && letter.reply && (
+                    <div className="px-4 pb-3">
+                      <div className="mb-2 text-xs font-medium" style={{ color: "#3A7CA5" }}>TA 的回信：</div>
+                      <div
+                        className="relative rounded-xl overflow-hidden"
+                        style={{
+                          backgroundImage: `url(${img("letter.jpg")})`,
+                          backgroundSize: "cover",
+                          backgroundPosition: "center",
+                        }}
+                      >
+                        <div className="relative z-10 p-4 whitespace-pre-line text-sm leading-relaxed" style={{ color: "#1a3a6b" }}>
+                          {letter.reply}
+                        </div>
+                        <div className="pointer-events-none absolute inset-0" style={{ boxShadow: "inset 0 0 40px rgba(255,255,255,0.2)" }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -905,17 +905,17 @@ function MessageBubble({
     <>
       {message.quoteText && (
         <div
-          className="animate-bubbleIn mb-1 rounded-lg border-l-2 px-2.5 py-1.5 text-[12px]"
+          className="animate-bubbleIn mb-1 rounded-lg border-l-2 px-2.5 py-1.5 text-[13px]"
           style={{
-            background: "color-mix(in srgb, var(--accent) 8%, transparent)",
+            background: "color-mix(in srgb, var(--accent) 15%, transparent)",
             borderColor: "var(--accent)",
-            color: "var(--text-soft)",
+            color: "var(--text)",
           }}
         >
-          <div className="text-[10px] font-medium" style={{ color: "var(--accent)" }}>
+          <div className="text-[11px] font-semibold mb-0.5" style={{ color: "var(--accent)" }}>
             {message.quoteSender === "me" ? "我" : "对方"}
           </div>
-          <div className="truncate">{message.quoteText}</div>
+          <div className="line-clamp-3 leading-snug opacity-90">{message.quoteText}</div>
         </div>
       )}
       <div className="relative animate-bubbleIn" style={{ maxWidth: "100%", minHeight: "36px" }}>

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X, UserPlus, Users, MessageCircle } from "lucide-react";
+import { X, UserPlus, Users, MessageCircle, Trash2 } from "lucide-react";
 import { useAppStore } from "@/store/app";
 
 interface ConvSwitchModalProps {
@@ -16,6 +16,7 @@ export default function ConvSwitchModal({ isOpen, onClose }: ConvSwitchModalProp
   const addContact = useAppStore((s) => s.addContact);
   const addToGroup = useAppStore((s) => s.addToGroup);
   const addPrivateConversation = useAppStore((s) => s.addPrivateConversation);
+  const deleteContact = useAppStore((s) => s.deleteContact);
 
   const [newContactName, setNewContactName] = useState("");
 
@@ -94,10 +95,10 @@ export default function ConvSwitchModal({ isOpen, onClose }: ConvSwitchModalProp
 
           {privateConvs.map((conv) => {
             const contact = getContactById(conv.memberIds[0]);
+            const contactId = conv.memberIds[0];
             return (
-              <button
+              <div
                 key={conv.id}
-                onClick={() => handleSelectConv(conv.id)}
                 className={`flex w-full items-center gap-3 rounded-xl border p-3 transition hover:bg-black/5 ${
                   activeConversationId === conv.id ? "bg-black/5" : ""
                 }`}
@@ -105,24 +106,42 @@ export default function ConvSwitchModal({ isOpen, onClose }: ConvSwitchModalProp
                   borderColor: activeConversationId === conv.id ? "var(--accent)" : "var(--card-border)",
                 }}
               >
-                <div
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold"
-                  style={{ background: "var(--her-card)", color: "var(--text)" }}
+                <button
+                  onClick={() => handleSelectConv(conv.id)}
+                  className="flex flex-1 items-center gap-3 text-left"
                 >
-                  <MessageCircle className="h-5 w-5" />
-                </div>
-                <div className="flex-1 text-left">
-                  <div className="font-medium" style={{ color: "var(--text)" }}>
-                    {conv.name}
+                  <div
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold"
+                    style={{ background: "var(--her-card)", color: "var(--text)" }}
+                  >
+                    <MessageCircle className="h-5 w-5" />
                   </div>
-                  <div className="text-xs" style={{ color: "var(--text-soft)" }}>
-                    私聊 · {contact?.avatar || "他"}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate" style={{ color: "var(--text)" }}>
+                      {conv.name}
+                    </div>
+                    <div className="text-xs" style={{ color: "var(--text-soft)" }}>
+                      私聊 · {contact?.avatar || "他"}
+                    </div>
                   </div>
-                </div>
-                {activeConversationId === conv.id && (
-                  <div className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--accent)" }} />
-                )}
-              </button>
+                  {activeConversationId === conv.id && (
+                    <div className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: "var(--accent)" }} />
+                  )}
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (confirm(`确定删除和「${conv.name}」的私聊会话吗？`)) {
+                      deleteContact(contactId);
+                    }
+                  }}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition hover:bg-red-100 hover:text-red-500"
+                  style={{ color: "var(--text-soft)" }}
+                  title="删除会话"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
             );
           })}
         </div>

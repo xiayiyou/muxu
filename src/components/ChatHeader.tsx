@@ -1,11 +1,10 @@
 import { useState } from "react";
-import { Settings, Phone, Pencil, Vote, Hand, PhoneCall, StickyNote, Music, Palette } from "lucide-react";
+import { Settings, Phone, Pencil, Vote, Hand, PhoneCall, StickyNote, Music } from "lucide-react";
 import { useAppStore } from "@/store/app";
 import ConvSwitchModal from "@/components/modals/ConvSwitchModal";
 import RPSModal from "@/components/modals/RPSModal";
 import PollModal from "@/components/modals/PollModal";
 import MemoModal from "@/components/modals/MemoModal";
-import ThemePickerModal from "@/components/modals/ThemePickerModal";
 
 export default function ChatHeader() {
   const conversations = useAppStore((s) => s.conversations);
@@ -25,7 +24,6 @@ export default function ChatHeader() {
   const [showRPSModal, setShowRPSModal] = useState(false);
   const [showPollModal, setShowPollModal] = useState(false);
   const [showMemoModal, setShowMemoModal] = useState(false);
-  const [showThemePicker, setShowThemePicker] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
 
@@ -133,19 +131,6 @@ export default function ChatHeader() {
           )}
 
           <button
-            onClick={() => setShowThemePicker(true)}
-            className="flex h-10 w-10 items-center justify-center rounded-full border transition hover:scale-105"
-            style={{
-              borderColor: "var(--card-border)",
-              background: "var(--card)",
-              color: "var(--accent)",
-            }}
-            title="更换主题"
-          >
-            <Palette className="h-5 w-5" />
-          </button>
-
-          <button
             onClick={() => setSettingsOpen(true)}
             className="flex h-10 w-10 items-center justify-center rounded-full border transition hover:scale-105"
             style={{
@@ -224,7 +209,6 @@ export default function ChatHeader() {
       <ConvSwitchModal isOpen={showConvModal} onClose={() => setShowConvModal(false)} />
       <RPSModal isOpen={showRPSModal} onClose={() => setShowRPSModal(false)} />
       <PollModal isOpen={showPollModal} onClose={() => setShowPollModal(false)} />
-      <ThemePickerModal isOpen={showThemePicker} onClose={() => setShowThemePicker(false)} />
       {contactId && (
         <MemoModal
           isOpen={showMemoModal}

@@ -4,6 +4,7 @@ import ThemeApplier from "@/theme/ThemeApplier";
 import FloatingPhone from "@/components/FloatingPhone";
 import FloatingMusic from "@/components/FloatingMusic";
 import MusicPlayerModal from "@/components/MusicPlayerModal";
+import DriftBottleModal from "@/components/modals/DriftBottleModal";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "@/store/app";
@@ -113,6 +114,9 @@ export default function App() {
       </ErrorBoundary>
       <ErrorBoundary fallback={<></>}>
         <MusicPlayerModal />
+      </ErrorBoundary>
+      <ErrorBoundary fallback={<></>}>
+        <DriftBottleModal />
       </ErrorBoundary>
     </>
   );

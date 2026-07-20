@@ -10,10 +10,11 @@ const CARD_CONFIG: Record<CardType, { title: string; icon: React.ReactNode; colo
   reply: { title: "回信库", icon: <Reply className="h-4 w-4" />, color: "#7CB342" },
 };
 
-export default function BottleCardLibrary({ onBack }: { onBack: () => void }) {
-  const bottleNoteCards = useAppStore((s) => s.bottleNoteCards);
-  const bottleWhisperCards = useAppStore((s) => s.bottleWhisperCards);
-  const bottleReplyCards = useAppStore((s) => s.bottleReplyCards);
+export default function BottleCardLibrary({ onBack, contactId }: { onBack: () => void; contactId: string | null }) {
+  const bottleData = useAppStore((s) => contactId ? s.bottleData[contactId] : null);
+  const bottleNoteCards = bottleData?.noteCards || [];
+  const bottleWhisperCards = bottleData?.whisperCards || [];
+  const bottleReplyCards = bottleData?.replyCards || [];
   const addBottleNoteCards = useAppStore((s) => s.addBottleNoteCards);
   const deleteBottleNoteCard = useAppStore((s) => s.deleteBottleNoteCard);
   const addBottleWhisperCards = useAppStore((s) => s.addBottleWhisperCards);
@@ -28,31 +29,34 @@ export default function BottleCardLibrary({ onBack }: { onBack: () => void }) {
   const cards = activeType === "note" ? bottleNoteCards : activeType === "whisper" ? bottleWhisperCards : bottleReplyCards;
 
   const handleAdd = () => {
+    if (!contactId) return;
     const text = inputText.trim();
     if (!text) return;
     const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
-    if (activeType === "note") addBottleNoteCards(lines);
-    else if (activeType === "whisper") addBottleWhisperCards(lines);
-    else addBottleReplyCards(lines);
+    if (activeType === "note") addBottleNoteCards(contactId, lines);
+    else if (activeType === "whisper") addBottleWhisperCards(contactId, lines);
+    else addBottleReplyCards(contactId, lines);
     setInputText("");
   };
 
   const handleDelete = (id: string) => {
-    if (activeType === "note") deleteBottleNoteCard(id);
-    else if (activeType === "whisper") deleteBottleWhisperCard(id);
-    else deleteBottleReplyCard(id);
+    if (!contactId) return;
+    if (activeType === "note") deleteBottleNoteCard(contactId, id);
+    else if (activeType === "whisper") deleteBottleWhisperCard(contactId, id);
+    else deleteBottleReplyCard(contactId, id);
   };
 
   const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!contactId) return;
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = String(ev.target?.result || "");
       const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-      if (activeType === "note") addBottleNoteCards(lines);
-      else if (activeType === "whisper") addBottleWhisperCards(lines);
-      else addBottleReplyCards(lines);
+      if (activeType === "note") addBottleNoteCards(contactId, lines);
+      else if (activeType === "whisper") addBottleWhisperCards(contactId, lines);
+      else addBottleReplyCards(contactId, lines);
     };
     reader.readAsText(file);
     e.target.value = "";

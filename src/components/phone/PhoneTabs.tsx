@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import PhoneShell from "./PhoneShell";
 import ChatApp from "./apps/ChatApp";
 import BodyApp from "./apps/BodyApp";
@@ -10,8 +10,8 @@ import PhoneApp from "./apps/PhoneApp";
 import MusicApp from "./apps/MusicApp";
 import WeatherApp from "./apps/WeatherApp";
 import TomatoApp from "./apps/TomatoApp";
-import DriftBottleApp from "./apps/DriftBottleApp";
 import HomeScreen from "./apps/HomeScreen";
+import { useAppStore } from "@/store/app";
 
 export type PhoneAppId = "home" | "chat" | "body" | "mood" | "work" | "travel" | "meals" | "phone" | "music" | "weather" | "tomato" | "driftbottle";
 
@@ -178,10 +178,20 @@ const APPS: { id: PhoneAppId; name: string; Icon: (p: { color: string }) => JSX.
 
 export default function PhoneTabs() {
   const [app, setApp] = useState<PhoneAppId>("home");
+  const setPhoneOpen = useAppStore((s) => s.setPhoneOpen);
+  const setDriftBottleOpen = useAppStore((s) => s.setDriftBottleOpen);
   const time = new Date().toLocaleTimeString("zh-CN", {
     hour: "2-digit",
     minute: "2-digit",
   });
+
+  useEffect(() => {
+    if (app === "driftbottle") {
+      setDriftBottleOpen(true);
+      setPhoneOpen(false);
+      setApp("home");
+    }
+  }, [app, setDriftBottleOpen, setPhoneOpen]);
 
   return (
     <PhoneShell time={time}>
@@ -197,7 +207,6 @@ export default function PhoneTabs() {
         {app === "music" && <MusicApp onBack={() => setApp("home")} />}
         {app === "weather" && <WeatherApp onBack={() => setApp("home")} />}
         {app === "tomato" && <TomatoApp onBack={() => setApp("home")} />}
-        {app === "driftbottle" && <DriftBottleApp onBack={() => setApp("home")} />}
       </div>
 
       {/* Home 指示条 */}

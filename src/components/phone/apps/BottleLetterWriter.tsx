@@ -2,6 +2,9 @@ import { useState, useRef, useEffect } from "react";
 import { X, ChevronLeft, ChevronRight, Send } from "lucide-react";
 import { useAppStore } from "@/store/app";
 
+const BASE = import.meta.env.BASE_URL;
+const img = (name: string) => `${BASE}driftbottle/${name}`;
+
 const FONTS = [
   { label: "默认", value: "inherit" },
   { label: "宋体", value: "'Songti SC', 'STSong', 'SimSun', serif" },
@@ -15,11 +18,25 @@ const FONTS = [
   { label: "娃娃体", value: "'Wawati SC', 'STWawati', cursive" },
   { label: "漫画体", value: "'Comic Sans MS', 'Hannotate SC', cursive" },
   { label: "幼圆", value: "'Yuppy SC', 'STYuppy', sans-serif" },
+  { label: "细黑", value: "'Hiragino Sans GB', 'Microsoft YaHei', sans-serif" },
+  { label: "仿宋", value: "'FangSong', 'STFangsong', serif" },
+  { label: "舒体", value: "'FZShuTi', 'STShuti', cursive" },
+  { label: "琥珀体", value: "'FZHuPo', 'STHupo', sans-serif" },
+  { label: "彩云体", value: "'FZCaiYun', 'STCaiyun', sans-serif" },
+  { label: "瘦金体", value: "'FZShaoEr-M11S', 'STShoujin', cursive" },
+  { label: "硬笔书法", value: "'FZYingBiShuFa', 'STYingBiao', cursive" },
+  { label: "蝴蝶体", value: "'FZHudie', 'Wawati SC', cursive" },
+  { label: "布丁体", value: "'FZBudingTi', 'STWawati', cursive" },
+  { label: "萝卜体", value: "'FZLuobo', 'STYuanti', sans-serif" },
+  { label: "胖头鱼体", value: "'FZPangtouyu', 'STYuanti', sans-serif" },
+  { label: "可爱体", value: "'ZCOOL KuaiLe', 'STYuanti', cursive" },
+  { label: "文艺体", value: "'Ma Shan Zheng', 'Kaiti SC', cursive" },
+  { label: "萌宠体", value: "'ZCOOL QingKe HuangYou', 'STYuanti', sans-serif" },
 ];
 
 const PAGE_CHARS = 120; // 每页约120字
 
-export default function BottleLetterWriter({ onClose }: { onClose: () => void }) {
+export default function BottleLetterWriter({ onClose, contactId }: { onClose: () => void; contactId: string | null }) {
   const sendBottleLetter = useAppStore((s) => s.sendBottleLetter);
   const [text, setText] = useState("");
   const [font, setFont] = useState(FONTS[1].value);
@@ -82,8 +99,8 @@ export default function BottleLetterWriter({ onClose }: { onClose: () => void })
   };
 
   const handleSend = () => {
-    if (!text.trim()) return;
-    sendBottleLetter(text.trim(), font, fontSize);
+    if (!text.trim() || !contactId) return;
+    sendBottleLetter(contactId, text.trim(), font, fontSize);
     onClose();
   };
 
@@ -103,7 +120,7 @@ export default function BottleLetterWriter({ onClose }: { onClose: () => void })
         <div
           className="relative h-full w-full overflow-hidden rounded-lg shadow-2xl"
           style={{
-            backgroundImage: "url(/driftbottle/letter.jpg)",
+            backgroundImage: `url(${img("letter.jpg")})`,
             backgroundSize: "cover",
             backgroundPosition: "center",
           }}
@@ -135,8 +152,55 @@ export default function BottleLetterWriter({ onClose }: { onClose: () => void })
             }}
           />
 
+          {/* 字体设置面板 - 显示在控制栏上方 */}
+          {showSettings && (
+            <div className="absolute bottom-20 left-3 right-3 z-30 flex flex-col gap-2 rounded-xl bg-white p-3 shadow-2xl">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-xs font-bold" style={{ color: "#1a3a6b" }}>字体设置</span>
+                <button
+                  onClick={() => setShowSettings(false)}
+                  className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-black/10"
+                >
+                  <X className="h-3.5 w-3.5" style={{ color: "#1a3a6b" }} />
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {FONTS.map((f) => (
+                  <button
+                    key={f.value}
+                    onClick={() => setFont(f.value)}
+                    className={`rounded-md px-2.5 py-1.5 text-xs transition active:scale-95 ${
+                      font === f.value
+                        ? "text-white shadow-md"
+                        : "bg-[#1a3a6b10] hover:bg-[#1a3a6b20]"
+                    }`}
+                    style={{
+                      fontFamily: f.value,
+                      color: font === f.value ? "#fff" : "#1a3a6b",
+                      background: font === f.value ? "#1a3a6b" : undefined,
+                    }}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-xs w-8" style={{ color: "#1a3a6b" }}>字号</span>
+                <input
+                  type="range"
+                  min={12}
+                  max={24}
+                  value={fontSize}
+                  onChange={(e) => setFontSize(Number(e.target.value))}
+                  className="flex-1"
+                />
+                <span className="text-xs w-8 text-right" style={{ color: "#1a3a6b" }}>{fontSize}</span>
+              </div>
+            </div>
+          )}
+
           {/* 底部控制栏 */}
-          <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center gap-2 bg-gradient-to-t from-black/30 to-transparent px-3 pb-3 pt-6">
+          <div className="absolute bottom-0 left-0 right-0 z-20 flex flex-col items-center gap-2 bg-gradient-to-t from-black/30 to-transparent px-3 pb-3 pt-6">
             {/* 翻页按钮 */}
             <div className="flex items-center gap-3">
               <button
@@ -163,7 +227,7 @@ export default function BottleLetterWriter({ onClose }: { onClose: () => void })
             <div className="flex w-full items-center justify-between gap-2">
               <button
                 onClick={() => setShowSettings(!showSettings)}
-                className="rounded-lg bg-white/80 px-3 py-1.5 text-[11px] font-medium transition hover:bg-white"
+                className="rounded-lg bg-white/80 px-3 py-1.5 text-[11px] font-medium transition hover:bg-white active:scale-95"
                 style={{ color: "#1a3a6b" }}
               >
                 字体
@@ -179,38 +243,6 @@ export default function BottleLetterWriter({ onClose }: { onClose: () => void })
                 寄出
               </button>
             </div>
-
-            {/* 字体设置 */}
-            {showSettings && (
-              <div className="flex w-full flex-col gap-2 rounded-xl bg-white/95 p-2.5 shadow-lg">
-                <div className="flex flex-wrap gap-1">
-                  {FONTS.map((f) => (
-                    <button
-                      key={f.value}
-                      onClick={() => setFont(f.value)}
-                      className={`rounded-md px-2 py-1 text-[10px] transition ${
-                        font === f.value ? "bg-[#1a3a6b] text-white" : "hover:bg-black/10"
-                      }`}
-                      style={{ fontFamily: f.value, color: font === f.value ? "#fff" : "#1a3a6b" }}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px]" style={{ color: "#1a3a6b" }}>字号</span>
-                  <input
-                    type="range"
-                    min={12}
-                    max={24}
-                    value={fontSize}
-                    onChange={(e) => setFontSize(Number(e.target.value))}
-                    className="flex-1"
-                  />
-                  <span className="text-[10px] w-6" style={{ color: "#1a3a6b" }}>{fontSize}</span>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>

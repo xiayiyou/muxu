@@ -74,22 +74,22 @@ export default function InputBar() {
       {quotedMsg && (
         <div className="mx-auto mb-2 flex max-w-3xl items-center gap-2 rounded-lg border-l-2 px-3 py-2"
           style={{
-            background: "color-mix(in srgb, var(--accent) 8%, transparent)",
+            background: "color-mix(in srgb, var(--accent) 15%, transparent)",
             borderColor: "var(--accent)",
           }}
         >
           <div className="flex-1 min-w-0">
-            <div className="text-[10px] font-medium" style={{ color: "var(--accent)" }}>
+            <div className="text-[11px] font-semibold" style={{ color: "var(--accent)" }}>
               {quotedMsg.sender === "me" ? "我" : "对方"}
             </div>
-            <div className="truncate text-[12px]" style={{ color: "var(--text-soft)" }}>
+            <div className="truncate text-[13px] leading-snug" style={{ color: "var(--text)" }}>
               {quotedMsg.text || (quotedMsg.sticker ? "[表情包]" : quotedMsg.image ? "[图片]" : "")}
             </div>
           </div>
           <button
             onClick={() => useAppStore.setState({ quotingMessageId: null })}
             className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition hover:bg-black/10"
-            style={{ color: "var(--text-soft)" }}
+            style={{ color: "var(--text)" }}
           >
             <X className="h-3 w-3" />
           </button>
@@ -151,7 +151,7 @@ export default function InputBar() {
         </div>
       )}
 
-      <div className="mx-auto flex max-w-3xl items-end gap-2">
+      <div className="mx-auto flex max-w-3xl items-end gap-3 px-1">
         <button
           onClick={() => setShowStickers(!showStickers)}
           className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border transition hover:bg-black/5 cute-sticker-btn"
