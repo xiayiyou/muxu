@@ -76,10 +76,6 @@ export default function DriftBottleModal() {
   const pickBottleOcean = useAppStore((s) => s.pickBottleOcean);
   const replyBottleOcean = useAppStore((s) => s.replyBottleOcean);
   const receiveBottleOceanReply = useAppStore((s) => s.receiveBottleOceanReply);
-  const chatCards = useAppStore((s) => {
-    const contact = s.contacts.find((c) => c.id === contactId);
-    return contact?.cards?.chat || [];
-  });
 
   const [view, setView] = useState<"main" | "library" | "diary" | "letters">("main");
   const [showLetter, setShowLetter] = useState(false);

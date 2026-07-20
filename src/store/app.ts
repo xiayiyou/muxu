@@ -120,7 +120,7 @@ interface BottleData {
   noteCards: { id: string; content: string }[];
   whisperCards: { id: string; content: string }[];
   diary: { id: string; type: "star" | "ocean" | "letter"; content: string; reply?: string; herReply?: string; herReplyAt?: number; timestamp: number }[];
-  letters: { id: string; content: string; font: string; fontSize: number; timestamp: number; expectedReceiveAt: number; expectedReplyAt: number; receivedAt?: number; replyAt?: number; reply?: string }[];
+  letters: { id: string; content: string; font: string; fontSize: number; timestamp: number; expectedReceiveAt?: number; expectedReplyAt?: number; receivedAt?: number; replyAt?: number; reply?: string }[];
   starPicks: Record<string, { morning: boolean; noon: boolean; evening: boolean }>;
 }
 
