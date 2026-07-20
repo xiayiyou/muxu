@@ -34,7 +34,7 @@ const FONTS = [
   { label: "萌宠体", value: "'ZCOOL QingKe HuangYou', 'STYuanti', sans-serif" },
 ];
 
-const PAGE_CHARS = 120; // 每页约120字
+const PAGE_CHARS = 320; // 每页约320字
 
 export default function BottleLetterWriter({ onClose, contactId }: { onClose: () => void; contactId: string | null }) {
   const sendBottleLetter = useAppStore((s) => s.sendBottleLetter);

@@ -20,7 +20,7 @@ export default function BottleDiary({ onBack, contactId }: { onBack: () => void;
   };
 
   return (
-    <div className="flex h-[480px] flex-col">
+    <div className="flex h-screen flex-col">
       <div className="flex items-center gap-2 border-b px-4 py-3" style={{ borderColor: "var(--card-border)", background: "var(--card)" }}>
         <button onClick={onBack} className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-black/10" style={{ color: "var(--text)" }}>
           <ArrowLeft className="h-4 w-4" />
