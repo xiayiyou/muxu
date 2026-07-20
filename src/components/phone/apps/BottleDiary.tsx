@@ -69,10 +69,20 @@ export default function BottleDiary({ onBack, contactId }: { onBack: () => void;
                   {entry.reply && (
                     <div className="mt-2 rounded-lg bg-[#1a3a6b08] p-2">
                       <div className="mb-0.5 text-[10px] font-medium" style={{ color: "#1a3a6b80" }}>
-                        💬 回复：
+                        💬 我的回复：
                       </div>
                       <div className="whitespace-pre-line text-[12px] leading-relaxed" style={{ color: "#1a3a6b" }}>
                         {entry.reply}
+                      </div>
+                    </div>
+                  )}
+                  {entry.herReply && (
+                    <div className="mt-2 rounded-lg bg-[#e8a87c20] p-2">
+                      <div className="mb-0.5 text-[10px] font-medium" style={{ color: "#c87941" }}>
+                        💌 TA的回复：
+                      </div>
+                      <div className="whitespace-pre-line text-[12px] leading-relaxed" style={{ color: "#1a3a6b" }}>
+                        {entry.herReply}
                       </div>
                     </div>
                   )}

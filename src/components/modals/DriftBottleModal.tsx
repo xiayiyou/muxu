@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback } from "react";
-import { X, Book, Library, Mail } from "lucide-react";
+import { useState, useMemo, useCallback, useRef } from "react";
+import { X, Book, Library, Mail, Send } from "lucide-react";
 import { useAppStore } from "@/store/app";
 import BottleCardLibrary from "@/components/phone/apps/BottleCardLibrary";
 import BottleDiary from "@/components/phone/apps/BottleDiary";
@@ -74,11 +74,21 @@ export default function DriftBottleModal() {
   const bottleDiary = bottleData?.diary || [];
   const pickBottleStar = useAppStore((s) => s.pickBottleStar);
   const pickBottleOcean = useAppStore((s) => s.pickBottleOcean);
+  const replyBottleOcean = useAppStore((s) => s.replyBottleOcean);
+  const receiveBottleOceanReply = useAppStore((s) => s.receiveBottleOceanReply);
+  const chatCards = useAppStore((s) => {
+    const contact = s.contacts.find((c) => c.id === contactId);
+    return contact?.cards?.chat || [];
+  });
 
   const [view, setView] = useState<"main" | "library" | "diary" | "letters">("main");
   const [showLetter, setShowLetter] = useState(false);
   const [pickedNote, setPickedNote] = useState<string | null>(null);
   const [pickedWhisper, setPickedWhisper] = useState<string | null>(null);
+  const [pickedWhisperId, setPickedWhisperId] = useState<string | null>(null);
+  const [whisperReply, setWhisperReply] = useState("");
+  const [whisperReplied, setWhisperReplied] = useState(false);
+  const replyInputRef = useRef<HTMLTextAreaElement>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const today = getTodayKey();
@@ -158,22 +168,44 @@ export default function DriftBottleModal() {
       data[contactId] = { ...bd, starPicks: { ...bd.starPicks, [today]: newPicks } };
       return { bottleData: data };
     });
-
-    setTimeout(() => {
-      setPickedNote(null);
-      setRefreshKey((k) => k + 1);
-    }, 2500);
   };
 
   const handleOceanClick = (item: OceanItem) => {
     if (!contactId || bottleWhisperCards.length === 0) return;
     const card = bottleWhisperCards[Math.floor(Math.random() * bottleWhisperCards.length)];
-    pickBottleOcean(contactId, card.content);
+    const id = pickBottleOcean(contactId, card.content);
     setPickedWhisper(card.content);
+    setPickedWhisperId(id);
+    setWhisperReply("");
+    setWhisperReplied(false);
     setTimeout(() => {
-      setPickedWhisper(null);
-      setRefreshKey((k) => k + 1);
-    }, 3000);
+      replyInputRef.current?.focus();
+    }, 300);
+  };
+
+  const handleWhisperReply = () => {
+    if (!contactId || !pickedWhisperId || !whisperReply.trim()) return;
+    replyBottleOcean(contactId, pickedWhisperId, whisperReply.trim());
+    setWhisperReplied(true);
+
+    // 4-6分钟后对方从聊天字卡随机回复
+    const replyDelay = Math.floor(Math.random() * (6 * 60 * 1000 - 4 * 60 * 1000)) + 4 * 60 * 1000;
+    window.setTimeout(() => {
+      const st = useAppStore.getState();
+      const contact = st.contacts.find((c) => c.id === contactId);
+      const cards = contact?.cards?.chat || [];
+      if (cards.length === 0) return;
+      const randomCard = cards[Math.floor(Math.random() * cards.length)];
+      receiveBottleOceanReply(contactId, pickedWhisperId, randomCard.content);
+    }, replyDelay);
+  };
+
+  const closeWhisper = () => {
+    setPickedWhisper(null);
+    setPickedWhisperId(null);
+    setWhisperReply("");
+    setWhisperReplied(false);
+    setRefreshKey((k) => k + 1);
   };
 
   const handleEnvelopeClick = () => {
@@ -358,19 +390,83 @@ export default function DriftBottleModal() {
       </div>
 
       {pickedNote && (
-        <div className="absolute left-1/2 top-[35%] z-30 w-[min(340px,85%)] -translate-x-1/2 -translate-y-1/2 animate-popIn rounded-2xl bg-white/95 p-6 shadow-2xl backdrop-blur">
+        <div
+          className="fixed left-1/2 top-1/2 z-50 w-[min(340px,85%)] -translate-x-1/2 -translate-y-1/2 animate-popIn rounded-2xl bg-white/95 p-6 shadow-2xl backdrop-blur"
+          onClick={() => {
+            setPickedNote(null);
+            setRefreshKey((k) => k + 1);
+          }}
+        >
           <div className="mb-2 text-center text-3xl">⭐</div>
           <div className="text-center text-base font-medium leading-relaxed" style={{ color: "#1a3a6b", fontFamily: "'Songti SC', serif" }}>
             {pickedNote}
           </div>
+          <div className="mt-4 text-center text-xs text-gray-400">点击任意处关闭</div>
         </div>
       )}
 
       {pickedWhisper && (
-        <div className="absolute left-1/2 top-1/2 z-30 w-[min(340px,85%)] -translate-x-1/2 -translate-y-1/2 animate-popIn rounded-2xl bg-white/95 p-6 shadow-2xl backdrop-blur">
-          <div className="mb-2 text-center text-3xl">🐚</div>
-          <div className="text-center text-sm leading-relaxed" style={{ color: "#1a3a6b", fontFamily: "'Kaiti SC', serif" }}>
-            {pickedWhisper}
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={closeWhisper}>
+          <div
+            className="w-[min(380px,100%)] animate-popIn rounded-2xl bg-white/95 p-6 shadow-2xl backdrop-blur"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 text-center text-4xl">🐚</div>
+            <div className="text-center text-base leading-relaxed" style={{ color: "#1a3a6b", fontFamily: "'Kaiti SC', serif" }}>
+              {pickedWhisper}
+            </div>
+
+            {!whisperReplied ? (
+              <div className="mt-5">
+                <textarea
+                  ref={replyInputRef}
+                  value={whisperReply}
+                  onChange={(e) => setWhisperReply(e.target.value)}
+                  placeholder="写下你的回复..."
+                  className="w-full resize-none rounded-xl border px-3 py-2 text-sm outline-none transition focus:border-blue-400"
+                  style={{ borderColor: "rgba(26,58,107,0.2)", color: "#1a3a6b", minHeight: "80px" }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleWhisperReply();
+                    }
+                  }}
+                />
+                <div className="mt-3 flex items-center justify-between">
+                  <button
+                    onClick={closeWhisper}
+                    className="rounded-full px-4 py-2 text-sm"
+                    style={{ color: "#888" }}
+                  >
+                    稍后再说
+                  </button>
+                  <button
+                    onClick={handleWhisperReply}
+                    disabled={!whisperReply.trim()}
+                    className="flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-medium text-white shadow-md transition active:scale-95 disabled:opacity-40"
+                    style={{ background: "linear-gradient(135deg, #3A7CA5 0%, #1a3a6b 100%)" }}
+                  >
+                    <Send className="h-4 w-4" />
+                    回复
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-5 text-center">
+                <div className="inline-block rounded-xl bg-blue-50 px-4 py-2 text-sm" style={{ color: "#1a3a6b" }}>
+                  ✅ 已回复，TA 收到后会回你的
+                </div>
+                <div className="mt-3">
+                  <button
+                    onClick={closeWhisper}
+                    className="rounded-full px-6 py-2 text-sm font-medium"
+                    style={{ color: "#1a3a6b" }}
+                  >
+                    好的
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

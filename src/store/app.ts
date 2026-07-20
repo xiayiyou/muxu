@@ -119,7 +119,7 @@ interface ConversationStore {
 interface BottleData {
   noteCards: { id: string; content: string }[];
   whisperCards: { id: string; content: string }[];
-  diary: { id: string; type: "star" | "ocean" | "letter"; content: string; reply?: string; timestamp: number }[];
+  diary: { id: string; type: "star" | "ocean" | "letter"; content: string; reply?: string; herReply?: string; herReplyAt?: number; timestamp: number }[];
   letters: { id: string; content: string; font: string; fontSize: number; timestamp: number; receivedAt?: number; replyAt?: number; reply?: string }[];
   starPicks: Record<string, { morning: boolean; noon: boolean; evening: boolean }>;
 }
@@ -174,8 +174,9 @@ interface GlobalState {
   deleteBottleWhisperCard: (contactId: string, id: string) => void;
   // 漂流瓶拾取/写信
   pickBottleStar: (contactId: string, content: string) => void;
-  pickBottleOcean: (contactId: string, content: string) => void;
+  pickBottleOcean: (contactId: string, content: string) => string;
   replyBottleOcean: (contactId: string, id: string, reply: string) => void;
+  receiveBottleOceanReply: (contactId: string, id: string, reply: string) => void;
   sendBottleLetter: (contactId: string, content: string, font: string, fontSize: number) => void;
   showMemoBar: boolean;
   toggleMemoBar: () => void;
@@ -717,19 +718,22 @@ export const useAppStore = create<
           };
           return { bottleData: data };
         }),
-      pickBottleOcean: (contactId, content) =>
+      pickBottleOcean: (contactId, content) => {
+        const id = uid("docean");
         set((s) => {
           const data = { ...s.bottleData };
           const bd = getBottleData(data, contactId);
           data[contactId] = {
             ...bd,
             diary: [
-              { id: uid("docean"), type: "ocean" as const, content, timestamp: Date.now() },
+              { id, type: "ocean" as const, content, timestamp: Date.now() },
               ...bd.diary,
             ],
           };
           return { bottleData: data };
-        }),
+        });
+        return id;
+      },
       replyBottleOcean: (contactId, id, reply) =>
         set((s) => {
           const data = { ...s.bottleData };
@@ -737,6 +741,18 @@ export const useAppStore = create<
           data[contactId] = {
             ...bd,
             diary: bd.diary.map((d) => (d.id === id ? { ...d, reply } : d)),
+          };
+          return { bottleData: data };
+        }),
+      receiveBottleOceanReply: (contactId, id, reply) =>
+        set((s) => {
+          const data = { ...s.bottleData };
+          const bd = getBottleData(data, contactId);
+          data[contactId] = {
+            ...bd,
+            diary: bd.diary.map((d) =>
+              d.id === id ? { ...d, herReply: reply, herReplyAt: Date.now() } : d
+            ),
           };
           return { bottleData: data };
         }),
