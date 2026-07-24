@@ -12,6 +12,18 @@ import { useAppStore } from "@/store/app";
 const basename = import.meta.env.BASE_URL;
 const NOTIFICATION_ICON = "https://i.postimg.cc/ZKVRS4kH/retouch-2026071501420750.png";
 
+const DRIFT_BOTTLE_IMAGES = [
+  "driftbottle/bg.jpg",
+  "driftbottle/coral.png",
+  "driftbottle/pearl.png",
+  "driftbottle/shell.png",
+  "driftbottle/wave.png",
+  "driftbottle/star.png",
+  "driftbottle/envelope.png",
+  "driftbottle/letter.jpg",
+  "driftbottle/diary.jpg",
+];
+
 export default function App() {
   const [notificationGranted, setNotificationGranted] = useState(false);
   const beauty = useAppStore((s) => s.beauty);
@@ -95,6 +107,13 @@ export default function App() {
 
     return unsubscribe;
   }, [notificationGranted, beauty.herName, pushNotification]);
+
+  useEffect(() => {
+    DRIFT_BOTTLE_IMAGES.forEach((path) => {
+      const img = new Image();
+      img.src = `${basename}${path}`;
+    });
+  }, []);
 
   return (
     <>
