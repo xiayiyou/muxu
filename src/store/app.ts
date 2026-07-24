@@ -98,6 +98,7 @@ interface ConversationStore {
   sendStickerInConv: (conversationId: string, image: string, senderId: string) => void;
   sendImageInConv: (conversationId: string, image: string, senderId: string) => void;
   sendRPS: (conversationId: string, targetId: string, myChoice: "rock" | "paper" | "scissors") => void;
+  sendFlyChess: (conversationId: string, playerCount: 2 | 3 | 4) => void;
   sendPoll: (conversationId: string, question: string, options: string[]) => void;
   quoteMessage: (conversationId: string, messageId: string) => void;
   recallMessage: (conversationId: string, messageId: string) => void;
@@ -151,12 +152,14 @@ function getBottleData(data: Record<string, BottleData>, contactId: string): Bot
 
 interface GlobalState {
   phoneOpen: boolean;
+  phoneAppId: string;
   settingsOpen: boolean;
   caughtMessage: string | null;
   angryAlert: boolean;
   mealAlert: { meal: "breakfast" | "lunch" | "dinner"; name: string } | null;
   activeCardLibContactId: string | null;
   setActiveCardLibContactId: (id: string | null) => void;
+  setPhoneAppId: (appId: string) => void;
   callRecords: CallRecord[];
   memos: Memo[];
   driftBottles: DriftBottle[];
@@ -416,6 +419,7 @@ export const useAppStore = create<
     (set, get) => ({
       // =========== 全局状态 ===========
       phoneOpen: false,
+      phoneAppId: "home",
       settingsOpen: false,
       caughtMessage: null,
       angryAlert: false,
@@ -2316,6 +2320,31 @@ export const useAppStore = create<
         }));
       },
 
+      sendFlyChess: (conversationId, playerCount) => {
+        const conv = get().conversations.find((c) => c.id === conversationId);
+        if (!conv) return;
+        const shuffled = [...conv.memberIds].sort(() => Math.random() - 0.5);
+        const selectedPlayers = shuffled.slice(0, playerCount - 1);
+        const players = ["me", ...selectedPlayers];
+        const msg: Message = {
+          id: uid("flychess"),
+          sender: "me",
+          type: "flychess",
+          flychess: {
+            playerCount,
+            players,
+            started: true,
+            gameId: uid("flychess"),
+          },
+          timestamp: Date.now(),
+        };
+        set((s) => ({
+          conversations: s.conversations.map((c) =>
+            c.id === conversationId ? { ...c, messages: [...c.messages, msg] } : c
+          ),
+        }));
+      },
+
       sendPoll: (conversationId, question, options) => {
         const conv = get().conversations.find((c) => c.id === conversationId);
         if (!conv) return;
@@ -2365,6 +2394,7 @@ export const useAppStore = create<
         }
         set({ phoneOpen: open });
       },
+      setPhoneAppId: (appId) => set({ phoneAppId: appId }),
 
       setFloatingPhone: (open, contactId) =>
         set(
@@ -2422,6 +2452,7 @@ export const useAppStore = create<
         lastAutoMemoAt: state.lastAutoMemoAt,
         lastAutoMailboxAt: state.lastAutoMailboxAt,
         activeCardLibContactId: state.activeCardLibContactId,
+        phoneAppId: state.phoneAppId,
         musicCurrentIndex: state.musicCurrentIndex,
         tomatoStats: state.tomatoStats,
         bottleData: state.bottleData,
@@ -2460,6 +2491,7 @@ export const useAppStore = create<
           }
         }
         if (!state.cardGroups) state.cardGroups = ["日常", "撒娇", "关心"];
+        if (!state.phoneAppId) state.phoneAppId = "home";
         if (!state.stickers) state.stickers = [];
         if (!state.activeCardLibContactId) state.activeCardLibContactId = null;
         if (!state.beauty?.myName) state.beauty.myName = "我";

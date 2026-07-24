@@ -484,3 +484,27 @@ html[data-theme="cute-moe"] .cute-image-btn {
   box-shadow: none !important;
   border: none !important;
 }
+
+/* ============ 飞行棋游戏动画 ============ */
+@keyframes diceRoll {
+  0% { transform: rotateX(0deg) rotateY(0deg) scale(1); }
+  25% { transform: rotateX(90deg) rotateY(45deg) scale(1.1); }
+  50% { transform: rotateX(180deg) rotateY(90deg) scale(1); }
+  75% { transform: rotateX(270deg) rotateY(135deg) scale(1.1); }
+  100% { transform: rotateX(360deg) rotateY(180deg) scale(1); }
+}
+
+.dice-roll {
+  animation: diceRoll 0.15s linear infinite;
+}
+
+@keyframes pulseRing {
+  0% { transform: scale(0.8); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.5; }
+  100% { transform: scale(0.8); opacity: 1; }
+}
+
+.pulse-ring {
+  animation: pulseRing 1s ease-in-out infinite;
+  transform-origin: center;
+}
